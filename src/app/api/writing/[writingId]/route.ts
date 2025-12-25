@@ -44,14 +44,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const { writingId } = await params;
     const searchParams = request.nextUrl.searchParams;
-    const format = searchParams.get("format") as "markdown" | "html" | "docx" | null;
+    const format = searchParams.get("format") as "markdown" | "html" | "docx" | "text" | null;
 
     // If format specified, export
     if (format) {
       const exported = await exportWritingProject(writingId, session.user.id, format);
-      const contentType = format === "html" ? "text/html" : "text/markdown";
+      const contentTypes: Record<string, string> = {
+        html: "text/html",
+        markdown: "text/markdown",
+        text: "text/plain",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      };
       return new Response(exported, {
-        headers: { "Content-Type": contentType },
+        headers: { "Content-Type": contentTypes[format] || "text/plain" },
       });
     }
 

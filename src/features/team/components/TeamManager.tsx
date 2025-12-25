@@ -1,22 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import {
-  Users,
   Mail,
   Shield,
   MoreHorizontal,
-  Plus,
   UserPlus,
   Search,
   Globe,
-  Settings,
-  History,
   Activity,
-  Check
+  Trash2,
 } from "lucide-react";
+import { CommonDialog } from "@/components/ui/common-dialog";
+import { InviteMemberModal } from "./InviteMemberModal";
+import { useRemoveMember, useUpdateMemberRole } from "../api/queries";
+import { toast } from "sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem
+} from "@/components/ui/dropdown-menu";
 
 interface TeamMember {
   id: string;
@@ -46,6 +60,7 @@ interface MembersResponse {
 export function TeamManager() {
   const params = useParams();
   const projectId = params.id as string;
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
 
   const { data, isLoading } = useQuery<MembersResponse>({
     queryKey: ["project-members", projectId],
@@ -60,102 +75,133 @@ export function TeamManager() {
   const teamMembers = data?.members || [];
 
   return (
-    <div className="space-y-12 pb-20">
-      <header className="flex justify-between items-end">
-        <div className="space-y-4">
-          <h1 className="text-6xl font-serif">Project Collective</h1>
-          <p className="text-muted font-serif italic text-xl">Governance and collaboration management for the review team.</p>
-        </div>
-        <button className="btn-editorial flex items-center gap-2">
-          <UserPlus className="w-5 h-5" />
-          Invite Scholar
-        </button>
-      </header>
-
-      <div className="accent-line" />
-
-      <div className="editorial-grid gap-12">
-        {/* Active Team */}
-        <main className="col-span-12 md:col-span-8 space-y-8">
-          <div className="flex justify-between items-center border-b border-border pb-4">
-            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">
-              {isLoading ? "Loading Scholars..." : `Active Members (${teamMembers.length})`}
-            </h3>
-            <div className="relative group">
-              <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 text-muted group-focus-within:text-ink transition-colors" />
-              <input type="text" placeholder="Find member..." className="bg-transparent pl-6 py-1 outline-none text-xs font-serif italic placeholder:text-muted/40" />
-            </div>
-          </div>
-
+    <>
+      <div className="space-y-12 pb-20">
+        <header className="flex justify-between items-end">
           <div className="space-y-4">
-            {isLoading ? (
-              <div className="p-12 text-center font-serif italic text-muted">Retrieving project roster...</div>
-            ) : teamMembers.length === 0 ? (
-              <div className="p-12 text-center font-serif italic text-muted">No members found in this collective.</div>
-            ) : (
-              teamMembers.map((member) => (
-                <MemberCard key={member.id} member={member} />
-              ))
-            )}
+            <h1 className="text-6xl font-serif">Project Collective</h1>
+            <p className="text-muted font-serif italic text-xl">Governance and collaboration management for the review team.</p>
           </div>
-        </main>
+          <button
+            onClick={() => setIsInviteOpen(true)}
+            className="btn-editorial flex items-center gap-2"
+          >
+            <UserPlus className="w-5 h-5" />
+            Invite Scholar
+          </button>
+        </header>
 
-        {/* Roles & Permissions Reference */}
-        <aside className="col-span-12 md:col-span-4 space-y-8">
-          <div className="bg-white border border-border p-8 space-y-8">
-            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Governance Matrix</h3>
+        <div className="accent-line" />
 
-            <div className="space-y-6">
-              <RoleDefinition
-                role="Adjudicator"
-                desc="Can resolve conflicts and override decisions. Access to full project settings."
-              />
-              <RoleDefinition
-                role="Reviewer"
-                desc="Blind title/abstract screening and full-text extraction."
-              />
-              <RoleDefinition
-                role="Observer"
-                desc="Read-only access to progress and analytics. Cannot make decisions."
-              />
-            </div>
-
-            <div className="accent-line opacity-10" />
-
-            <div className="space-y-4">
-              <h4 className="text-xs font-mono uppercase tracking-widest text-muted flex items-center gap-2">
-                <Activity className="w-3 h-3" /> Collective Output
-              </h4>
-              <div className="space-y-4">
-                {teamMembers.map(m => (
-                  <ActivityRow
-                    key={m.id}
-                    user={m.user.name || m.user.email}
-                    action={`screened ${m.stats.total} studies (${m.stats.included} included)`}
-                    time={formatDistanceToNow(new Date(m.joinedAt), { addSuffix: true })}
-                  />
-                ))}
+        <div className="editorial-grid gap-12">
+          {/* Active Team */}
+          <main className="col-span-12 md:col-span-8 space-y-8">
+            <div className="flex justify-between items-center border-b border-border pb-4">
+              <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">
+                {isLoading ? "Loading Scholars..." : `Active Members (${teamMembers.length})`}
+              </h3>
+              <div className="relative group">
+                <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 text-muted group-focus-within:text-ink transition-colors" />
+                <input type="text" placeholder="Find member..." className="bg-transparent pl-6 py-1 outline-none text-xs font-serif italic placeholder:text-muted/40" />
               </div>
             </div>
-          </div>
 
-          <div className="p-8 border border-border bg-intel-blue/5 border-intel-blue/20 space-y-4">
-            <div className="flex items-center gap-2 text-intel-blue">
-              <Globe className="w-4 h-4" />
-              <span className="font-serif font-bold italic">Open Science</span>
+            <div className="space-y-4">
+              {isLoading ? (
+                <div className="p-12 text-center font-serif italic text-muted">Retrieving project roster...</div>
+              ) : teamMembers.length === 0 ? (
+                <div className="p-12 text-center font-serif italic text-muted">No members found in this collective.</div>
+              ) : (
+                teamMembers.map((member) => (
+                  <MemberCard key={member.id} member={member} projectId={projectId} />
+                ))
+              )}
             </div>
-            <p className="text-xs font-serif italic text-intel-blue/70 leading-relaxed">
-              LitLens supports ORCID-linked accounts to ensure provenance and recognition for all contributions to the review.
-            </p>
-          </div>
-        </aside>
+          </main>
+
+          {/* Roles & Permissions Reference */}
+          <aside className="col-span-12 md:col-span-4 space-y-8">
+            <div className="bg-white border border-border p-8 space-y-8">
+              <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Governance Matrix</h3>
+
+              <div className="space-y-6">
+                <RoleDefinition
+                  role="Adjudicator"
+                  desc="Can resolve conflicts and override decisions. Access to full project settings."
+                />
+                <RoleDefinition
+                  role="Reviewer"
+                  desc="Blind title/abstract screening and full-text extraction."
+                />
+                <RoleDefinition
+                  role="Observer"
+                  desc="Read-only access to progress and analytics. Cannot make decisions."
+                />
+              </div>
+
+              <div className="accent-line opacity-10" />
+
+              <div className="space-y-4">
+                <h4 className="text-xs font-mono uppercase tracking-widest text-muted flex items-center gap-2">
+                  <Activity className="w-3 h-3" /> Collective Output
+                </h4>
+                <div className="space-y-4">
+                  {teamMembers.map(m => (
+                    <ActivityRow
+                      key={m.id}
+                      user={m.user.name || m.user.email}
+                      action={`screened ${m.stats.total} studies (${m.stats.included} included)`}
+                      time={formatDistanceToNow(new Date(m.joinedAt), { addSuffix: true })}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="p-8 border border-border bg-intel-blue/5 border-intel-blue/20 space-y-4">
+              <div className="flex items-center gap-2 text-intel-blue">
+                <Globe className="w-4 h-4" />
+                <span className="font-serif font-bold italic">Open Science</span>
+              </div>
+              <p className="text-xs font-serif italic text-intel-blue/70 leading-relaxed">
+                LitLens supports ORCID-linked accounts to ensure provenance and recognition for all contributions to the review.
+              </p>
+            </div>
+          </aside>
+        </div>
       </div>
-    </div>
+
+      <InviteMemberModal
+        projectId={projectId}
+        isOpen={isInviteOpen}
+        onClose={() => setIsInviteOpen(false)}
+      />
+    </>
   );
 }
 
-function MemberCard({ member }: { member: TeamMember }) {
+function MemberCard({ member, projectId }: { member: TeamMember, projectId: string }) {
   const initial = member.user.name ? member.user.name[0].toUpperCase() : member.user.email[0].toUpperCase();
+  const removeMember = useRemoveMember(projectId);
+  const updateRole = useUpdateMemberRole(projectId);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+
+  const handleRoleChange = (role: string) => {
+    updateRole.mutate({ memberId: member.id, role: role as 'OWNER' | 'LEAD' | 'REVIEWER' | 'OBSERVER' }, {
+      onSuccess: () => toast.success("Role updated successfully"),
+      onError: (err) => toast.error(err.message)
+    });
+  };
+
+  const handleRemove = () => {
+    removeMember.mutate({ memberId: member.id }, {
+      onSuccess: () => {
+        toast.success("Member removed");
+        setShowRemoveConfirm(false);
+      },
+      onError: (err) => toast.error(err.message)
+    });
+  };
 
   return (
     <div className="group bg-white border border-border p-6 hover:border-ink transition-all flex items-center justify-between">
@@ -192,9 +238,47 @@ function MemberCard({ member }: { member: TeamMember }) {
           <div className="text-[10px] font-mono uppercase tracking-widest text-muted mb-1">Decisions</div>
           <div className="font-serif italic text-sm text-muted">{member.stats.total} total</div>
         </div>
-        <button className="p-2 hover:bg-paper rounded-full transition-colors">
-          <MoreHorizontal className="w-5 h-5 text-muted hover:text-ink" />
-        </button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="p-2 hover:bg-paper rounded-full transition-colors outline-none cursor-pointer">
+              <MoreHorizontal className="w-5 h-5 text-muted hover:text-ink" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>Member Actions</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Shield className="w-4 h-4 mr-2" />
+                <span>Change Role</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuRadioGroup value={member.role} onValueChange={handleRoleChange}>
+                  <DropdownMenuRadioItem value="LEAD">Project Lead</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="REVIEWER">Reviewer</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="OBSERVER">Observer</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShowRemoveConfirm(true)} className="text-rose-500 focus:text-rose-600 focus:bg-rose-50">
+              <Trash2 className="w-4 h-4 mr-2" />
+              <span>Remove Member</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <CommonDialog
+          isOpen={showRemoveConfirm}
+          onClose={() => setShowRemoveConfirm(false)}
+          onConfirm={handleRemove}
+          title="Remove Member"
+          description={`Are you sure you want to remove "${member.user.name || member.user.email}" from the project? This reviewer will lose access to all screening tasks.`}
+          confirmLabel="Remove"
+          variant="destructive"
+          loading={removeMember.isPending}
+        />
       </div>
     </div>
   );
@@ -222,4 +306,3 @@ function ActivityRow({ user, action, time }: { user: string, action: string, tim
     </div>
   );
 }
-

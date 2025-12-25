@@ -1,6 +1,22 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { handleApiError, UnauthorizedError, success } from "@/lib/api";
+import OpenAI from "openai";
+import { z } from "zod";
+
+// Initialize OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+const assistantRequestSchema = z.object({
+  messages: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string(),
+  })),
+  context: z.record(z.unknown()).optional(),
+  projectId: z.string().optional(),
+});
 
 // POST /api/ai/assistant - AI Research Assistant
 export async function POST(request: NextRequest) {
@@ -10,11 +26,18 @@ export async function POST(request: NextRequest) {
             throw new UnauthorizedError();
         }
 
-        const { message, projectId, context, history } = await request.json();
+        const body = await request.json();
+        const { messages, context, projectId } = assistantRequestSchema.parse(body);
 
-        // For now, return a simulated response
-        // In production, this would call OpenAI/Anthropic API
-        const response = await generateAIResponse(message, projectId, context, history);
+        if (!process.env.OPENAI_API_KEY) {
+            throw new Error("OpenAI API key not configured");
+        }
+
+        // Extract the current message (last in array) and history (all but last)
+        const currentMessage = messages[messages.length - 1]?.content || "";
+        const history = messages.slice(0, -1);
+
+        const response = await generateAIResponse(currentMessage, projectId, context, history);
 
         return success(response);
     } catch (error) {
@@ -39,50 +62,79 @@ async function generateAIResponse(
     context?: Record<string, unknown>,
     history?: ConversationMessage[]
 ): Promise<{ response: string; actions?: AssistantAction[] }> {
-    // Simulated responses based on keywords
+  try {
+    // Build context from provided data
+    let systemContext = "You are an academic research assistant helping with systematic literature reviews and research writing.";
+    
+    if (context?.writingContent) {
+      systemContext += `\n\nCurrent document content: ${JSON.stringify(context.writingContent).substring(0, 500)}`;
+    }
+    
+    if (context?.citations && Array.isArray(context.citations)) {
+      systemContext += `\n\nAvailable citations: ${(context.citations as any[]).map((c: any) => `${c.title} (${c.year})`).join(", ")}`;
+    }
+
+    // Build conversation messages
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: systemContext,
+      },
+    ];
+
+    // Add conversation history
+    if (history && history.length > 0) {
+      history.forEach((msg) => {
+        messages.push({
+          role: msg.role,
+          content: msg.content,
+        });
+      });
+    }
+
+    // Add current message
+    messages.push({
+      role: "user",
+      content: message,
+    });
+
+    // Call OpenAI
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages,
+      temperature: 0.7,
+      max_tokens: 1500,
+    });
+
+    const response = completion.choices[0].message.content || "I apologize, but I couldn't generate a response.";
+
+    // Analyze the user's message to suggest relevant actions
+    const actions: AssistantAction[] = [];
     const lowerMessage = message.toLowerCase();
 
-    if (lowerMessage.includes("summarize") || lowerMessage.includes("summary")) {
-        return {
-            response: "Based on the included studies in your review, the main themes that emerge are:\n\n1. **Methodology**: Most studies employ randomized controlled trial designs with varying sample sizes.\n\n2. **Key Findings**: There appears to be a consistent positive effect across studies, though heterogeneity is notable.\n\n3. **Limitations**: Several studies report small sample sizes and short follow-up periods.\n\nWould you like me to elaborate on any of these points or help you write a synthesis paragraph?",
-            actions: [
-                { type: "write", label: "Draft synthesis paragraph" },
-                { type: "analyze", label: "Show heterogeneity analysis" },
-            ],
-        };
+    if (lowerMessage.includes("improve") || lowerMessage.includes("revise")) {
+      actions.push({ type: "write", label: "Improve selected text" });
     }
 
-    if (lowerMessage.includes("gap") || lowerMessage.includes("gaps")) {
-        return {
-            response: "I've identified several potential research gaps in your included studies:\n\n1. **Population**: Limited research in pediatric populations and low-resource settings.\n\n2. **Outcomes**: Long-term outcomes (>12 months) are rarely reported.\n\n3. **Mechanisms**: The underlying mechanisms of effect are poorly understood.\n\n4. **Implementation**: Few studies examine real-world implementation challenges.\n\nThese gaps could form the basis of your discussion section or future research recommendations.",
-            actions: [
-                { type: "write", label: "Draft future research section" },
-            ],
-        };
+    if (lowerMessage.includes("expand") || lowerMessage.includes("elaborate")) {
+      actions.push({ type: "write", label: "Expand section" });
     }
 
-    if (lowerMessage.includes("methods") || lowerMessage.includes("methodology")) {
-        return {
-            response: "Here's a draft methods section based on your review protocol:\n\n**Search Strategy**\nWe searched [databases] from [dates] using the following terms: [terms]. Reference lists of included studies were also screened.\n\n**Eligibility Criteria**\nWe included [study types] examining [intervention/exposure] in [population]. Studies were excluded if [exclusion criteria].\n\n**Data Extraction**\nTwo reviewers independently extracted data using a standardized form. Discrepancies were resolved by consensus.\n\nShall I expand any section or help with the risk of bias assessment description?",
-            actions: [
-                { type: "write", label: "Expand search strategy" },
-                { type: "write", label: "Add risk of bias section" },
-            ],
-        };
+    if (lowerMessage.includes("summarize") || lowerMessage.includes("condense")) {
+      actions.push({ type: "write", label: "Summarize text" });
     }
 
-    if (lowerMessage.includes("finding") || lowerMessage.includes("result")) {
-        return {
-            response: "Based on the data extracted from your included studies:\n\n**Primary Outcome**: The overall effect shows [direction] with [effect size/statistics].\n\n**Secondary Outcomes**: Variable results across secondary endpoints.\n\n**Subgroup Analyses**: [Key subgroup findings]\n\nI can help you visualize these findings or draft the results narrative.",
-            actions: [
-                { type: "analyze", label: "Generate forest plot data" },
-                { type: "write", label: "Draft results section" },
-            ],
-        };
+    if (lowerMessage.includes("cite") || lowerMessage.includes("citation")) {
+      actions.push({ type: "search", label: "Find relevant citations" });
     }
 
-    // Default response
+    return { response, actions: actions.length > 0 ? actions : undefined };
+  } catch (error) {
+    console.error("OpenAI API Error:", error);
+    
+    // Fallback to helpful error message
     return {
-        response: "I understand you're asking about: \"" + message + "\"\n\nI can help you with:\n• Summarizing and synthesizing your included studies\n• Identifying research gaps and limitations\n• Drafting methods, results, or discussion sections\n• Analyzing patterns across your data\n\nCould you provide more context about what specific aspect you'd like me to focus on?",
+      response: "I'm having trouble connecting to the AI service. Please check that your OpenAI API key is configured correctly in your environment variables (.env.local).",
     };
+  }
 }

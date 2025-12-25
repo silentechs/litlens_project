@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { 
-  handleApiError, 
+import {
+  handleApiError,
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Check if batch or single decision
     const isBatch = Array.isArray(body.projectWorkIds);
-    
+
     if (isBatch) {
       return await handleBatchDecision(projectId, session.user.id, body);
     }
@@ -255,7 +255,7 @@ async function updateProjectWorkStatus(
     return;
   }
 
-  // If only one decision and dual screening required, mark as screening
+  // If dual screening is required but only one decision exists, mark as screening (waiting for 2nd reviewer)
   if (decisions.length === 1 && requireDualScreening) {
     await db.projectWork.update({
       where: { id: projectWorkId },
@@ -264,9 +264,26 @@ async function updateProjectWorkStatus(
     return;
   }
 
-  // Check for conflict (different decisions)
+  // If dual screening is NOT required and we have 1 decision, finalize immediately
+  if (decisions.length === 1 && !requireDualScreening) {
+    const finalDecision = decisions[0].decision;
+    await db.projectWork.update({
+      where: { id: projectWorkId },
+      data: {
+        status: finalDecision === "INCLUDE"
+          ? "INCLUDED"
+          : finalDecision === "EXCLUDE"
+            ? "EXCLUDED"
+            : "MAYBE",
+        finalDecision,
+      },
+    });
+    return;
+  }
+
+  // Check for conflict (different decisions from 2+ reviewers)
   const uniqueDecisions = new Set(decisions.map((d) => d.decision));
-  
+
   if (uniqueDecisions.size > 1) {
     // Create conflict
     const projectWork = await db.projectWork.findUnique({
@@ -305,10 +322,10 @@ async function updateProjectWorkStatus(
   await db.projectWork.update({
     where: { id: projectWorkId },
     data: {
-      status: finalDecision === "INCLUDE" 
-        ? "INCLUDED" 
-        : finalDecision === "EXCLUDE" 
-          ? "EXCLUDED" 
+      status: finalDecision === "INCLUDE"
+        ? "INCLUDED"
+        : finalDecision === "EXCLUDE"
+          ? "EXCLUDED"
           : "MAYBE",
       finalDecision,
     },

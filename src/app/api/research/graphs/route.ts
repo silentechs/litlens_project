@@ -25,7 +25,14 @@ import { paginationSchema } from "@/lib/validators";
 const createGraphSchema = z.object({
   title: z.string().min(1, "Title is required"),
   description: z.string().optional(),
-  graphType: z.enum(["CITATION_NETWORK", "CO_AUTHORSHIP", "TOPIC_CLUSTER", "CUSTOM"]),
+  // Accept both UI-friendly names and Prisma enum names
+  graphType: z.enum([
+    "CITATION_NETWORK", 
+    "CO_AUTHORSHIP", "AUTHOR_COLLABORATION",
+    "TOPIC_CLUSTER", "CONCEPT_CLUSTER",
+    "TEMPORAL_EVOLUTION",
+    "CUSTOM"
+  ]),
   projectId: z.string().cuid().optional(),
   workIds: z.array(z.string().cuid()).optional(),
   options: z.object({
@@ -36,6 +43,19 @@ const createGraphSchema = z.object({
     numTopics: z.number().optional(),
   }).optional(),
 });
+
+// Map UI graph types to Prisma enum values
+function mapGraphType(uiType: string): GraphType {
+  const mapping: Record<string, GraphType> = {
+    "CITATION_NETWORK": GraphType.CITATION_NETWORK,
+    "CO_AUTHORSHIP": GraphType.AUTHOR_COLLABORATION,
+    "AUTHOR_COLLABORATION": GraphType.AUTHOR_COLLABORATION,
+    "TOPIC_CLUSTER": GraphType.CONCEPT_CLUSTER,
+    "CONCEPT_CLUSTER": GraphType.CONCEPT_CLUSTER,
+    "TEMPORAL_EVOLUTION": GraphType.TEMPORAL_EVOLUTION,
+  };
+  return mapping[uiType] || GraphType.CONCEPT_CLUSTER;
+}
 
 // GET /api/research/graphs - List user's graphs
 export async function GET(request: NextRequest) {
@@ -115,6 +135,7 @@ export async function POST(request: NextRequest) {
         break;
 
       case "CO_AUTHORSHIP":
+      case "AUTHOR_COLLABORATION":
         if (!projectId) {
           throw new Error("projectId required for co-authorship network");
         }
@@ -134,6 +155,7 @@ export async function POST(request: NextRequest) {
         break;
 
       case "TOPIC_CLUSTER":
+      case "CONCEPT_CLUSTER":
         if (!projectId) {
           throw new Error("projectId required for topic cluster graph");
         }
@@ -144,11 +166,11 @@ export async function POST(request: NextRequest) {
         graphData = { nodes: [], edges: [], stats: { nodeCount: 0, edgeCount: 0, density: 0, avgDegree: 0 } };
     }
 
-    // Save graph
+    // Save graph - map UI type to Prisma enum
     const graph = await saveGraph(session.user.id, {
       title,
       description,
-      graphType: graphType as GraphType,
+      graphType: mapGraphType(graphType),
       projectId,
       graphData,
       settings: options,

@@ -19,7 +19,7 @@ export interface ScreeningQueueItem {
   workId: string;
   status: ProjectWorkStatus;
   phase: ScreeningPhase;
-  
+
   // Work details
   title: string;
   authors: WorkAuthor[];
@@ -27,15 +27,15 @@ export interface ScreeningQueueItem {
   journal: string | null;
   year: number | null;
   doi: string | null;
-  
+
   // AI assistance
   aiSuggestion?: ScreeningDecision | null;
   aiConfidence?: number | null;
   aiReasoning?: string | null;
-  
+
   // User's previous decision (if any)
   userDecision?: ScreeningDecision | null;
-  
+
   // Metadata
   importSource: string | null;
   createdAt: string;
@@ -55,6 +55,7 @@ export interface ScreeningDecisionInput {
   decision: ScreeningDecision;
   reasoning?: string;
   exclusionReason?: string;
+  confidence?: number;
   timeSpentMs?: number;
   followedAi?: boolean;
 }
@@ -67,6 +68,7 @@ export interface ScreeningDecisionRecord {
   decision: ScreeningDecision;
   reasoning: string | null;
   exclusionReason: string | null;
+  confidence: number | null;
   aiSuggestion: ScreeningDecision | null;
   aiConfidence: number | null;
   followedAi: boolean | null;
@@ -90,7 +92,7 @@ export interface Conflict {
   decisions: ConflictDecision[];
   createdAt: string;
   resolvedAt: string | null;
-  
+
   // Related work info
   work: {
     title: string;
@@ -193,3 +195,17 @@ export interface ScreeningQueueFilters {
   sortOrder?: "asc" | "desc";
 }
 
+export interface ScreeningNextSteps {
+  completed: boolean;
+  totalPending: number; // For the user
+  conflicts: number;
+  remainingReviewers: number; // Number of other reviewers still screening
+  phaseStats: {
+    total: number;
+    included: number;
+    excluded: number;
+    maybe: number;
+  };
+  canMoveToNextPhase: boolean;
+  nextPhase?: ScreeningPhase;
+}

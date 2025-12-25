@@ -78,12 +78,12 @@ export default function ProjectsPage() {
 
 function ProjectCard({ project }: { project: ProjectListItem }) {
   const { id, title, status, progress, members, lastActivity, _count } = project;
-  
+
   // Format status for display
   const statusDisplay = status.charAt(0) + status.slice(1).toLowerCase().replace("_", " ");
-  
+
   // Format last activity
-  const lastActiveDisplay = lastActivity 
+  const lastActiveDisplay = lastActivity
     ? formatDistanceToNow(new Date(lastActivity), { addSuffix: true })
     : "No activity";
 
@@ -91,26 +91,29 @@ function ProjectCard({ project }: { project: ProjectListItem }) {
   const teamInitials = members.slice(0, 3).map(m => {
     const name = m.user.name || m.user.email || "?";
     const parts = name.split(" ");
-    return parts.length > 1 
+    return parts.length > 1
       ? `${parts[0][0]}. ${parts[1][0]}.`
       : `${name[0]}.`;
   });
 
+  // Determine destination: if no works, go to import, otherwise screening
+  const href = project._count.projectWorks === 0 ? `/project/${id}/import` : `/project/${id}/screening`;
+
   return (
-    <Link 
-      href={`/project/${id}/screening`} 
+    <Link
+      href={href}
       className="block group bg-white border border-border p-8 hover:border-ink transition-all cursor-pointer rounded-sm shadow-sm"
     >
       <div className="flex justify-between items-start mb-8">
         <h3 className="text-3xl font-serif leading-tight max-w-md group-hover:underline">{title}</h3>
         <ArrowUpRight className="w-6 h-6 text-muted group-hover:text-ink transition-colors" />
       </div>
-      
+
       <div className="flex items-center gap-6 mb-8">
         <div className="flex-1 h-1 bg-paper relative rounded-full overflow-hidden">
-          <div 
-            className="absolute left-0 top-0 h-full bg-ink transition-all duration-1000" 
-            style={{ width: `${progress}%` }} 
+          <div
+            className="absolute left-0 top-0 h-full bg-ink transition-all duration-1000"
+            style={{ width: `${progress}%` }}
           />
         </div>
         <span className="font-mono text-[10px] text-muted uppercase tracking-widest">
@@ -122,8 +125,8 @@ function ProjectCard({ project }: { project: ProjectListItem }) {
         <div className="flex items-center gap-4">
           <div className="flex -space-x-2">
             {teamInitials.map((initials, i) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 className="w-8 h-8 rounded-full border-2 border-white bg-paper flex items-center justify-center text-[10px] font-bold shadow-sm"
               >
                 {initials}

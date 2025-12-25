@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
-import { 
-  handleApiError, 
+import {
+  handleApiError,
   UnauthorizedError,
   success,
 } from "@/lib/api";
@@ -17,19 +17,19 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    
+
     const params = externalSearchSchema.parse({
       query: searchParams.get("query"),
-      sources: searchParams.getAll("sources").length > 0 
-        ? searchParams.getAll("sources") 
+      sources: searchParams.getAll("sources").length > 0
+        ? searchParams.getAll("sources")
         : ["openalex"],
-      page: searchParams.get("page"),
-      limit: searchParams.get("limit"),
+      page: searchParams.get("page") || undefined,
+      limit: searchParams.get("limit") || undefined,
       filters: {
-        yearFrom: searchParams.get("yearFrom"),
-        yearTo: searchParams.get("yearTo"),
-        type: searchParams.get("type"),
-        openAccess: searchParams.get("openAccess") === "true",
+        yearFrom: searchParams.get("yearFrom") || undefined,
+        yearTo: searchParams.get("yearTo") || undefined,
+        type: searchParams.get("type") || undefined,
+        openAccess: searchParams.get("openAccess") === "true" ? true : undefined,
       },
     });
 
@@ -50,9 +50,9 @@ export async function GET(request: NextRequest) {
             return [];
         }
       } catch (error) {
-        errors.push({ 
-          source, 
-          error: error instanceof Error ? error.message : "Search failed" 
+        errors.push({
+          source,
+          error: error instanceof Error ? error.message : "Search failed"
         });
         return [];
       }
@@ -92,7 +92,7 @@ interface OpenAlexParams {
 async function searchOpenAlex(params: OpenAlexParams): Promise<WorkSearchResult[]> {
   const email = process.env.OPENALEX_EMAIL || "user@example.com";
   const baseUrl = "https://api.openalex.org/works";
-  
+
   // Build filter string
   const filters: string[] = [];
   if (params.filters?.yearFrom) {
@@ -117,7 +117,7 @@ async function searchOpenAlex(params: OpenAlexParams): Promise<WorkSearchResult[
   }
 
   const response = await fetch(`${baseUrl}?${searchParams.toString()}`);
-  
+
   if (!response.ok) {
     throw new Error(`OpenAlex API error: ${response.status}`);
   }
@@ -131,8 +131,8 @@ async function searchOpenAlex(params: OpenAlexParams): Promise<WorkSearchResult[
       name: a.author.display_name,
       orcid: a.author.orcid,
     })),
-    abstract: work.abstract_inverted_index 
-      ? reconstructAbstract(work.abstract_inverted_index) 
+    abstract: work.abstract_inverted_index
+      ? reconstructAbstract(work.abstract_inverted_index)
       : null,
     year: work.publication_year,
     journal: work.primary_location?.source?.display_name || null,
@@ -148,13 +148,13 @@ async function searchOpenAlex(params: OpenAlexParams): Promise<WorkSearchResult[
 // Helper to reconstruct abstract from inverted index
 function reconstructAbstract(invertedIndex: Record<string, number[]>): string {
   const wordPositions: [string, number][] = [];
-  
+
   for (const [word, positions] of Object.entries(invertedIndex)) {
     for (const pos of positions) {
       wordPositions.push([word, pos]);
     }
   }
-  
+
   wordPositions.sort((a, b) => a[1] - b[1]);
   return wordPositions.map(([word]) => word).join(" ");
 }
@@ -183,7 +183,7 @@ interface OpenAlexAuthorship {
 async function searchPubMed(params: OpenAlexParams): Promise<WorkSearchResult[]> {
   const apiKey = process.env.NCBI_API_KEY;
   const baseUrl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
-  
+
   // First, search for IDs
   const searchUrl = new URL(`${baseUrl}/esearch.fcgi`);
   searchUrl.searchParams.set("db", "pubmed");
@@ -254,7 +254,7 @@ async function searchPubMed(params: OpenAlexParams): Promise<WorkSearchResult[]>
 async function searchCrossref(params: OpenAlexParams): Promise<WorkSearchResult[]> {
   const mailto = process.env.CROSSREF_MAILTO || "user@example.com";
   const baseUrl = "https://api.crossref.org/works";
-  
+
   const searchParams = new URLSearchParams({
     query: params.query,
     rows: params.limit.toString(),
@@ -270,7 +270,7 @@ async function searchCrossref(params: OpenAlexParams): Promise<WorkSearchResult[
   }
 
   const response = await fetch(`${baseUrl}?${searchParams.toString()}`);
-  
+
   if (!response.ok) {
     throw new Error(`Crossref API error: ${response.status}`);
   }

@@ -65,30 +65,36 @@ export async function processImport(
   let newWorksCount = 0;
   const errors: { record: number; error: string }[] = [];
 
-  // Process in batches of 50
-  const BATCH_SIZE = 50;
-  
+  // Process in batches of 20 to avoid transaction timeouts
+  const BATCH_SIZE = 20;
+
   for (let i = 0; i < records.length; i += BATCH_SIZE) {
     const recordBatch = records.slice(i, i + BATCH_SIZE);
-    
+
     // Check duplicates for this batch
     const duplicateResults = await checkDuplicatesBatch(recordBatch, projectId);
-    
+
     await db.$transaction(async (tx) => {
       for (let j = 0; j < recordBatch.length; j++) {
         const record = recordBatch[j];
         const globalIndex = i + j;
         const duplicateCheck = duplicateResults.get(j);
-        
+
         try {
           let workId: string;
+          // ... (rest of logic unchanged, just needed to wrap the transaction config)
+          // Wait, I need to match the end of the transaction block to pass the config object.
+          // The tool doesn't support "insert after block" easily without context.
+          // Let me replace the start and end separately or the whole block.
+          // The block is large (lines 77-183).
+          // I will target the `BATCH_SIZE` definition and the `$transaction` closing.
           let isDuplicate = false;
-          
+
           // Check if this is a duplicate
           if (duplicateCheck?.isDuplicate && duplicateCheck.existingWorkId) {
             // Use existing work
             workId = duplicateCheck.existingWorkId;
-            
+
             // Check if already in this project
             const existingProjectWork = await tx.projectWork.findUnique({
               where: {
@@ -98,7 +104,7 @@ export async function processImport(
                 },
               },
             });
-            
+
             if (existingProjectWork) {
               isDuplicate = true;
               duplicatesCount++;
@@ -108,13 +114,13 @@ export async function processImport(
           } else {
             // Create new work - first check by DOI to avoid constraint violation
             let existingWork = null;
-            
+
             if (record.doi) {
               existingWork = await tx.work.findUnique({
                 where: { doi: record.doi },
               });
             }
-            
+
             if (existingWork) {
               workId = existingWork.id;
             } else {
@@ -180,6 +186,9 @@ export async function processImport(
           console.error(`Error processing record ${globalIndex}:`, error);
         }
       }
+    }, {
+      maxWait: 5000, // 5s max wait to get tx
+      timeout: 60000, // 60s timeout for the batch
     });
 
     // Publish progress
@@ -250,7 +259,7 @@ export async function importFile(
 }> {
   // Parse the file
   const parseResult = await parseImportFile(content, filename);
-  
+
   if (parseResult.errors.length > 0 && parseResult.works.length === 0) {
     // Update batch status to failed if no works were parsed
     await db.importBatch.update({
@@ -261,16 +270,16 @@ export async function importFile(
         completedAt: new Date(),
       },
     });
-    
+
     return {
       parseResult,
       importResult: { processed: 0, duplicates: 0, errors: parseResult.errors.length, newWorks: 0 },
     };
   }
-  
+
   // Process the parsed works
   const importResult = await processImport(batchId, parseResult.works);
-  
+
   return { parseResult, importResult };
 }
 

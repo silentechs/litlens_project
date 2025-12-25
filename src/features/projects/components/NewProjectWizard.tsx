@@ -1,31 +1,39 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  ArrowRight, 
-  ArrowLeft, 
-  Check, 
-  Target, 
-  Users, 
+import {
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Target,
+  Users,
   Settings,
   BookOpen,
-  Plus
+  Plus,
+  Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { clsx, type ClassValue } from "clsx";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCreateProject } from "../api/queries";
+import { toast } from "sonner";
 
 type Step = 'basic' | 'pico' | 'team' | 'settings';
 
 export function NewProjectWizard() {
+  const router = useRouter();
+  const { mutate: createProject, isPending } = useCreateProject();
+
   const [step, setStep] = useState<Step>('basic');
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     pico: { p: "", i: "", c: "", o: "" },
     team: [] as string[],
-    isPublic: false
+    isPublic: false,
+    blindScreening: true,
+    livingReview: false // Not currently in API but kept for UI state
   });
 
   const steps: { id: Step; label: string; icon: React.ReactNode }[] = [
@@ -39,6 +47,8 @@ export function NewProjectWizard() {
     const currentIndex = steps.findIndex(s => s.id === step);
     if (currentIndex < steps.length - 1) {
       setStep(steps[currentIndex + 1].id);
+    } else {
+      handleFinalize();
     }
   };
 
@@ -47,6 +57,37 @@ export function NewProjectWizard() {
     if (currentIndex > 0) {
       setStep(steps[currentIndex - 1].id);
     }
+  };
+
+  const handleFinalize = () => {
+    if (!formData.title) {
+      toast.error("Please provide a project title");
+      setStep('basic');
+      return;
+    }
+
+    createProject({
+      title: formData.title,
+      description: formData.description,
+      population: formData.pico.p,
+      intervention: formData.pico.i,
+      comparison: formData.pico.c,
+      outcome: formData.pico.o,
+      isPublic: formData.isPublic,
+      blindScreening: formData.blindScreening,
+      // livingReview ignored for now as not in API schema
+    }, {
+      onSuccess: (data) => {
+        toast.success("Project initialized successfully");
+        // Smart Navigation: Redirect to Import Lab for onboarding
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const projectId = (data as any).id;
+        router.push(`/project/${projectId}/import`);
+      },
+      onError: (error) => {
+        toast.error(error.message || "Failed to create project");
+      }
+    });
   };
 
   return (
@@ -99,21 +140,22 @@ export function NewProjectWizard() {
               <div className="space-y-8">
                 <div className="space-y-4">
                   <label className="font-serif italic text-2xl">What is the focus of this review?</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     placeholder="Enter project title..."
                     value={formData.title}
-                    onChange={(e) => setFormData({...formData, title: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     className="w-full bg-transparent border-b-2 border-border focus:border-ink py-4 text-4xl font-serif outline-none transition-all placeholder:text-muted/20"
+                    autoFocus
                   />
                 </div>
                 <div className="space-y-4">
                   <label className="font-serif italic text-2xl text-muted">A brief conceptual summary</label>
-                  <textarea 
+                  <textarea
                     rows={4}
                     placeholder="Describe the scope and objective..."
                     value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     className="w-full bg-transparent border border-border focus:border-ink p-6 text-xl font-serif outline-none transition-all placeholder:text-muted/20"
                   />
                 </div>
@@ -127,33 +169,33 @@ export function NewProjectWizard() {
                   <p className="text-muted font-serif italic">Structure your research question for precision.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-x-12 gap-y-8">
-                  <PICOField 
-                    label="P" 
-                    title="Population" 
-                    description="Who are the subjects?" 
-                    value={formData.pico.p} 
-                    onChange={(v) => setFormData({...formData, pico: {...formData.pico, p: v}})}
+                  <PICOField
+                    label="P"
+                    title="Population"
+                    description="Who are the subjects?"
+                    value={formData.pico.p}
+                    onChange={(v) => setFormData({ ...formData, pico: { ...formData.pico, p: v } })}
                   />
-                  <PICOField 
-                    label="I" 
-                    title="Intervention" 
-                    description="What is being tested?" 
-                    value={formData.pico.i} 
-                    onChange={(v) => setFormData({...formData, pico: {...formData.pico, i: v}})}
+                  <PICOField
+                    label="I"
+                    title="Intervention"
+                    description="What is being tested?"
+                    value={formData.pico.i}
+                    onChange={(v) => setFormData({ ...formData, pico: { ...formData.pico, i: v } })}
                   />
-                  <PICOField 
-                    label="C" 
-                    title="Comparison" 
-                    description="Control group or alternative?" 
-                    value={formData.pico.c} 
-                    onChange={(v) => setFormData({...formData, pico: {...formData.pico, c: v}})}
+                  <PICOField
+                    label="C"
+                    title="Comparison"
+                    description="Control group or alternative?"
+                    value={formData.pico.c}
+                    onChange={(v) => setFormData({ ...formData, pico: { ...formData.pico, c: v } })}
                   />
-                  <PICOField 
-                    label="O" 
-                    title="Outcome" 
-                    description="What are you measuring?" 
-                    value={formData.pico.o} 
-                    onChange={(v) => setFormData({...formData, pico: {...formData.pico, o: v}})}
+                  <PICOField
+                    label="O"
+                    title="Outcome"
+                    description="What are you measuring?"
+                    value={formData.pico.o}
+                    onChange={(v) => setFormData({ ...formData, pico: { ...formData.pico, o: v } })}
                   />
                 </div>
               </div>
@@ -165,28 +207,53 @@ export function NewProjectWizard() {
                   <Plus className="w-8 h-8 text-muted group-hover:text-ink" />
                 </div>
                 <h3 className="text-3xl font-serif">Invite Collaborators</h3>
-                <p className="text-muted font-serif italic max-w-sm mx-auto">Research is a collective endeavor. Add team members by email or ORCID.</p>
+                <p className="text-muted font-serif italic max-w-sm mx-auto">Research is a collective endeavor. You can invite team members after creating the project.</p>
               </div>
             )}
 
             {step === 'settings' && (
               <div className="space-y-12">
-                <div className="flex justify-between items-center p-8 border border-border hover:border-ink transition-all cursor-pointer group">
+                <div
+                  onClick={() => setFormData(prev => ({ ...prev, blindScreening: !prev.blindScreening }))}
+                  className={cn(
+                    "flex justify-between items-center p-8 border hover:border-ink transition-all cursor-pointer group select-none",
+                    formData.blindScreening ? "border-ink bg-white shadow-sm" : "border-border"
+                  )}
+                >
                   <div className="space-y-1">
                     <h4 className="text-2xl font-serif">Blind Screening</h4>
                     <p className="text-muted font-serif italic">Reviewers cannot see each other's decisions until the consensus phase.</p>
                   </div>
-                  <div className="w-12 h-6 bg-paper border border-border rounded-full relative">
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-border group-hover:bg-ink rounded-full" />
+                  <div className={cn(
+                    "w-12 h-6 rounded-full relative transition-colors",
+                    formData.blindScreening ? "bg-ink" : "bg-paper border border-border"
+                  )}>
+                    <div className={cn(
+                      "absolute top-1 w-4 h-4 rounded-full transition-all",
+                      formData.blindScreening ? "left-7 bg-white" : "left-1 bg-border group-hover:bg-ink"
+                    )} />
                   </div>
                 </div>
-                <div className="flex justify-between items-center p-8 border border-border hover:border-ink transition-all cursor-pointer group">
+
+                <div
+                  onClick={() => setFormData(prev => ({ ...prev, livingReview: !prev.livingReview }))}
+                  className={cn(
+                    "flex justify-between items-center p-8 border hover:border-ink transition-all cursor-pointer group select-none",
+                    formData.livingReview ? "border-ink bg-white shadow-sm" : "border-border"
+                  )}
+                >
                   <div className="space-y-1">
                     <h4 className="text-2xl font-serif">Living Review Mode</h4>
                     <p className="text-muted font-serif italic">Automatically scan for new publications and notify the team.</p>
                   </div>
-                  <div className="w-12 h-6 bg-paper border border-border rounded-full relative">
-                    <div className="absolute left-1 top-1 w-4 h-4 bg-border group-hover:bg-ink rounded-full" />
+                  <div className={cn(
+                    "w-12 h-6 rounded-full relative transition-colors",
+                    formData.livingReview ? "bg-ink" : "bg-paper border border-border"
+                  )}>
+                    <div className={cn(
+                      "absolute top-1 w-4 h-4 rounded-full transition-all",
+                      formData.livingReview ? "left-7 bg-white" : "left-1 bg-border group-hover:bg-ink"
+                    )} />
                   </div>
                 </div>
               </div>
@@ -197,19 +264,34 @@ export function NewProjectWizard() {
 
       {/* Footer Controls */}
       <footer className="flex justify-between items-center pt-12 border-t border-border">
-        <button 
+        <button
           onClick={handleBack}
-          disabled={step === 'basic'}
+          disabled={step === 'basic' || isPending}
           className="flex items-center gap-2 font-serif italic text-xl disabled:opacity-0 transition-all"
         >
           <ArrowLeft className="w-5 h-5" /> Previous
         </button>
-        <button 
+        <button
           onClick={handleNext}
-          className="btn-editorial flex items-center gap-4 text-2xl px-12 py-4"
+          disabled={isPending}
+          className="btn-editorial flex items-center gap-4 text-2xl px-12 py-4 disabled:opacity-70"
         >
-          {step === 'settings' ? 'Finalize Protocol' : 'Continue'}
-          <ArrowRight className="w-6 h-6" />
+          {isPending ? (
+            <>
+              <Loader2 className="w-6 h-6 animate-spin" />
+              Initializing...
+            </>
+          ) : step === 'settings' ? (
+            <>
+              Finalize Protocol
+              <Check className="w-6 h-6" />
+            </>
+          ) : (
+            <>
+              Continue
+              <ArrowRight className="w-6 h-6" />
+            </>
+          )}
         </button>
       </footer>
     </div>
@@ -223,8 +305,8 @@ function PICOField({ label, title, description, value, onChange }: { label: stri
         <span className="w-6 h-6 bg-ink text-paper flex items-center justify-center font-mono text-[10px] rounded-sm">{label}</span>
         <span className="font-serif font-bold italic">{title}</span>
       </div>
-      <input 
-        type="text" 
+      <input
+        type="text"
         placeholder={description}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -233,4 +315,3 @@ function PICOField({ label, title, description, value, onChange }: { label: stri
     </div>
   );
 }
-

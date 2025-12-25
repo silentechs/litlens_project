@@ -406,7 +406,7 @@ export async function generateBibliography(
 export async function exportWritingProject(
   projectId: string,
   userId: string,
-  format: "markdown" | "html" | "docx"
+  format: "markdown" | "html" | "docx" | "text"
 ): Promise<string> {
   const project = await getWritingProject(projectId, userId);
   if (!project) {
@@ -418,6 +418,8 @@ export async function exportWritingProject(
       return exportToMarkdown(project.content, project.sources);
     case "html":
       return exportToHTML(project.content, project.sources);
+    case "text":
+      return exportToPlainText(project.content, project.sources);
     case "docx":
       throw new Error("DOCX export not yet implemented");
     default:
@@ -672,4 +674,49 @@ function escapeHTML(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function exportToPlainText(content: WritingContent, sources: WritingSource[]): string {
+  let output = "";
+
+  function processNode(node: ContentNode | TextNode): string {
+    if (node.type === "text" && "text" in node) {
+      return node.text;
+    }
+
+    const children = "content" in node && Array.isArray(node.content)
+      ? (node.content as Array<ContentNode | TextNode>).map(processNode).join("")
+      : "";
+
+    switch (node.type) {
+      case "heading":
+        return `\n${children}\n${"=".repeat(children.length)}\n\n`;
+      case "paragraph":
+        return `${children}\n\n`;
+      case "bulletList":
+      case "orderedList":
+        return `${children}\n`;
+      case "listItem":
+        return `• ${children}\n`;
+      case "blockquote":
+        return `  ${children.split("\n").join("\n  ")}\n\n`;
+      default:
+        return children;
+    }
+  }
+
+  content.content.forEach((node) => {
+    output += processNode(node);
+  });
+
+  // Add bibliography
+  if (sources.length > 0) {
+    output += "\n\nReferences\n" + "=".repeat(10) + "\n\n";
+    sources.forEach((s, idx) => {
+      const citation = formatCitation(s.work, "APA", s.work.authors);
+      output += `${idx + 1}. ${citation}\n`;
+    });
+  }
+
+  return output;
 }

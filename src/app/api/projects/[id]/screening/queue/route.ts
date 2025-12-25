@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { 
-  handleApiError, 
+import {
+  handleApiError,
   UnauthorizedError,
   NotFoundError,
   paginated,
@@ -11,11 +11,11 @@ import {
   buildOrderBy,
 } from "@/lib/api";
 import { screeningQueueFiltersSchema, paginationSchema } from "@/lib/validators";
-import { 
-  getScreeningQueue, 
-  getQueueStats, 
+import {
+  getScreeningQueue,
+  getQueueStats,
   updatePriorityScores,
-  type QueueStrategy 
+  type QueueStrategy
 } from "@/lib/services/screening-queue";
 import { z } from "zod";
 
@@ -123,6 +123,15 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         ],
       };
     }
+
+    // IMPORTANT: Exclude items the current user has already decided on for this phase
+    // This prevents conflict errors when screening
+    where.decisions = {
+      none: {
+        reviewerId: session.user.id,
+        phase: filters.phase || "TITLE_ABSTRACT",
+      },
+    };
 
     // Get total count
     const total = await db.projectWork.count({ where });

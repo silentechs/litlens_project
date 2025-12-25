@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useScreeningStore } from "@/stores/screening-store";
-import { useScreeningQueue, useSubmitDecision } from "@/features/screening/api/queries";
+import { useScreeningQueue, useSubmitDecision, useScreeningNextSteps as useScreeningQueueNextSteps, useAdvancePhase } from "@/features/screening/api/queries";
+import { useProject } from "@/features/projects/api/queries";
 import { useAppStore } from "@/stores/app-store";
 import type { ScreeningDecision, ScreeningQueueItem } from "@/types/screening";
 import {
@@ -23,28 +24,43 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { ExclusionReasonInputs } from "./ExclusionReasonInputs";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { ConfidenceSlider } from "./ConfidenceSlider";
+import { Textarea } from "@/components/ui/textarea";
+import { KeywordHighlighter } from "./KeywordHighlighter";
+import { ScreeningStats } from "./ScreeningStats";
+import { PhaseSelector } from "./PhaseSelector";
 
 export function ScreeningQueue() {
   const { currentProjectId } = useAppStore();
-  const { 
-    currentIndex, 
-    isFocusMode: isFocused, 
+  const {
+    currentIndex,
+    isFocusMode: isFocused,
     currentPhase,
-    next, 
-    previous, 
+    setCurrentPhase,
+    next,
+    previous,
     toggleFocusMode,
     setCurrentIndex,
     startDecisionTimer,
     getDecisionTime,
   } = useScreeningStore();
 
+  const [showExclusionInput, setShowExclusionInput] = useState(false);
+  const [exclusionReason, setExclusionReason] = useState("");
+  const [confidence, setConfidence] = useState(80);
+  const [notes, setNotes] = useState("");
+  const [showNotes, setShowNotes] = useState(false);
+
   // Fetch screening queue from API
-  const { 
-    data, 
-    isLoading, 
-    isError, 
+  const {
+    data,
+    isLoading,
+    isError,
     error,
-    refetch 
+    refetch
   } = useScreeningQueue(currentProjectId || undefined, {
     phase: currentPhase,
     limit: 100,
@@ -52,6 +68,13 @@ export function ScreeningQueue() {
 
   // Submit decision mutation
   const submitDecision = useSubmitDecision(currentProjectId || "");
+
+  // Move hooks to top level
+  const { data: nextSteps, isLoading: isLoadingNextSteps } = useScreeningQueueNextSteps(currentProjectId || undefined, currentPhase);
+  const { data: project } = useProject(currentProjectId || undefined);
+
+  // Phase advancement mutation
+  const advancePhase = useAdvancePhase(currentProjectId || "");
 
   const studies = data?.items || [];
   const currentStudy = studies[currentIndex] as ScreeningQueueItem | undefined;
@@ -64,9 +87,24 @@ export function ScreeningQueue() {
     }
   }, [currentStudy?.id, startDecisionTimer]);
 
+  // Keep current index in bounds after queue refetch
+  useEffect(() => {
+    if (currentIndex >= studies.length && studies.length > 0) {
+      setCurrentIndex(studies.length - 1);
+    } else if (studies.length === 0) {
+      setCurrentIndex(0);
+    }
+  }, [studies.length, currentIndex, setCurrentIndex]);
+
   // Handle decision
   const handleDecision = useCallback((decision: ScreeningDecision) => {
     if (!currentStudy || !currentProjectId) return;
+
+    if (decision === 'EXCLUDE' && !exclusionReason) {
+      setShowExclusionInput(true);
+      toast.error("An exclusion reason is required.");
+      return;
+    }
 
     const timeSpentMs = getDecisionTime();
 
@@ -75,19 +113,30 @@ export function ScreeningQueue() {
         projectWorkId: currentStudy.id,
         phase: currentPhase,
         decision,
+        exclusionReason: decision === 'EXCLUDE' ? exclusionReason : undefined,
+        confidence: confidence,
+        reasoning: notes,
         timeSpentMs: timeSpentMs || undefined,
         followedAi: currentStudy.aiSuggestion ? decision === currentStudy.aiSuggestion : undefined,
       },
       {
         onSuccess: () => {
-          // Move to next after successful decision
-          if (currentIndex < totalStudies - 1) {
-            next();
-          }
+          // Reset state
+          setExclusionReason("");
+          setShowExclusionInput(false);
+          setNotes("");
+          setConfidence(80); // Reset to default "Confident"
+          setShowNotes(false);
+
+          // Refetch to get updated queue (excluding just-decided study)
+          refetch().then(() => {
+            // Keep current index position, unless we're past the end
+            // The queue will have one fewer item after refetch
+          });
         },
       }
     );
-  }, [currentStudy, currentProjectId, currentPhase, submitDecision, currentIndex, totalStudies, next, getDecisionTime]);
+  }, [currentStudy, currentProjectId, currentPhase, submitDecision, getDecisionTime, refetch]);
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -139,7 +188,7 @@ export function ScreeningQueue() {
             {error instanceof Error ? error.message : "An error occurred"}
           </p>
         </div>
-        <button 
+        <button
           onClick={() => refetch()}
           className="btn-editorial inline-flex items-center gap-2"
         >
@@ -150,25 +199,59 @@ export function ScreeningQueue() {
     );
   }
 
-  // Empty state
+
+
+  // Empty state logic
   if (!currentStudy || totalStudies === 0) {
+    if (isLoadingNextSteps) {
+      return (
+        <div className="py-40 text-center space-y-8">
+          <Loader2 className="w-12 h-12 animate-spin mx-auto text-muted" />
+          <p className="text-muted font-serif italic text-xl">Analyzing workflow status...</p>
+        </div>
+      );
+    }
+
     return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="py-40 text-center space-y-8"
-      >
-        <div className="w-24 h-24 bg-white border border-border rounded-full flex items-center justify-center mx-auto shadow-sm">
-          <Check className="w-10 h-10 text-muted opacity-20" />
-        </div>
-        <div className="space-y-3">
-          <h2 className="text-5xl font-serif italic text-muted">Pipeline Exhausted.</h2>
-          <p className="text-muted font-serif italic text-xl max-w-md mx-auto">
-            All records in this phase have been processed. The methodology is preserved.
-          </p>
-        </div>
-        <button className="btn-editorial">Return to Workspace</button>
-      </motion.div>
+      <ScreeningStats
+        currentPhase={currentPhase}
+        stats={{
+          completed: nextSteps?.completed || false,
+          totalPending: nextSteps?.totalPending || 0,
+          conflicts: nextSteps?.conflicts || 0,
+          remainingReviewers: nextSteps?.remainingReviewers || 0,
+          phaseStats: {
+            total: nextSteps?.phaseStats?.total || 0,
+            included: nextSteps?.phaseStats?.included || 0,
+            excluded: nextSteps?.phaseStats?.excluded || 0,
+            maybe: nextSteps?.phaseStats?.maybe || 0
+          },
+          canMoveToNextPhase: !!nextSteps?.canMoveToNextPhase,
+          nextPhase: nextSteps?.nextPhase
+        }}
+        onRefresh={() => refetch()}
+        onPhaseChange={setCurrentPhase}
+        onResolveConflicts={() => {
+          // Navigate to conflicts (mock for now)
+          toast.info("Conflict resolution interface coming soon");
+        }}
+        onMoveToNextPhase={() => {
+          if (nextSteps?.nextPhase && currentProjectId) {
+            advancePhase.mutate(
+              { currentPhase },
+              {
+                onSuccess: (result) => {
+                  toast.success(`Advanced ${result.advancedCount} studies to ${result.toPhase}`);
+                  refetch();
+                },
+                onError: (error) => {
+                  toast.error(error instanceof Error ? error.message : "Failed to advance phase");
+                },
+              }
+            );
+          }
+        }}
+      />
     );
   }
 
@@ -187,9 +270,14 @@ export function ScreeningQueue() {
       )}>
         <div className="flex items-center gap-10">
           <div className="flex items-center gap-4">
-            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted font-bold">
-              Phase: {currentPhase === "TITLE_ABSTRACT" ? "Title/Abstract" : currentPhase === "FULL_TEXT" ? "Full Text" : "Final"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted font-bold">Phase:</span>
+              <PhaseSelector
+                currentPhase={currentPhase}
+                onPhaseChange={setCurrentPhase}
+                className="w-80"
+              />
+            </div>
             <div className="h-4 w-[1px] bg-border" />
             <span className="font-mono text-[10px] font-bold tracking-widest text-ink">{currentIndex + 1} / {totalStudies}</span>
           </div>
@@ -242,7 +330,10 @@ export function ScreeningQueue() {
             >
               <div className="space-y-8">
                 <h2 className="text-7xl font-serif leading-[1.05] tracking-tight text-ink decoration-intel-blue/20 underline-offset-8">
-                  {currentStudy.title}
+                  <KeywordHighlighter
+                    text={currentStudy.title}
+                    keywords={project?.highlightKeywords || []}
+                  />
                 </h2>
                 <div className="flex flex-wrap items-center gap-8 text-[11px] font-mono uppercase tracking-[0.25em] text-muted">
                   <span className="font-bold text-ink/80">{authorsDisplay}</span>
@@ -269,7 +360,10 @@ export function ScreeningQueue() {
                   <div className="flex-1 h-px bg-border/30" />
                 </div>
                 <p className="text-3xl font-serif leading-[1.55] italic text-ink/90 first-letter:text-8xl first-letter:font-bold first-letter:mr-3 first-letter:float-left first-letter:text-ink first-letter:leading-none select-text">
-                  {currentStudy.abstract || "No abstract available."}
+                  <KeywordHighlighter
+                    text={currentStudy.abstract || "No abstract available."}
+                    keywords={project?.highlightKeywords || []}
+                  />
                 </p>
               </div>
 
@@ -307,15 +401,87 @@ export function ScreeningQueue() {
                   loading={submitDecision.isPending}
                   onClick={() => handleDecision('INCLUDE')}
                 />
-                <DecisionButton
-                  label="Exclude"
-                  shortcut="E"
-                  icon={<X className="w-8 h-8" />}
-                  color="red"
-                  active={currentStudy.userDecision === 'EXCLUDE'}
-                  loading={submitDecision.isPending}
-                  onClick={() => handleDecision('EXCLUDE')}
-                />
+
+                <div className="bg-muted/10 p-4 rounded-md space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono uppercase text-muted font-bold">Confidence</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowNotes(!showNotes)}
+                      className="h-6 text-[10px]"
+                    >
+                      {showNotes ? "Hide Notes" : "Add Notes"}
+                    </Button>
+                  </div>
+                  <ConfidenceSlider
+                    value={confidence}
+                    onChange={setConfidence}
+                  />
+                  {showNotes && (
+                    <Textarea
+                      placeholder="Reasoning..."
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      className="text-xs min-h-[60px]"
+                    />
+                  )}
+                </div>
+
+                {/* Exclude Button with Popover Logic */}
+                <div className="relative group/exclude">
+                  <DecisionButton
+                    label="Exclude"
+                    shortcut="E"
+                    icon={<X className="w-8 h-8" />}
+                    color="red"
+                    active={currentStudy.userDecision === 'EXCLUDE'}
+                    loading={submitDecision.isPending}
+                    onClick={() => {
+                      if (exclusionReason) {
+                        handleDecision('EXCLUDE');
+                      } else {
+                        setShowExclusionInput(true);
+                      }
+                    }}
+                  />
+
+                  <AnimatePresence>
+                    {showExclusionInput && (
+                      <motion.div
+                        initial={{ opacity: 0, x: -20, scale: 0.95 }}
+                        animate={{ opacity: 1, x: 0, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="absolute right-full top-0 mr-4 w-80 bg-white border border-border rounded-sm shadow-xl p-6 z-50 arrow-right"
+                      >
+                        <div className="space-y-4">
+
+                          <div className="flex justify-between items-center">
+                            <h4 className="font-serif italic text-lg">Why Exclude?</h4>
+                            <button onClick={() => setShowExclusionInput(false)} className="text-muted hover:text-ink">
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <p className="text-xs text-muted uppercase tracking-wider font-mono">Select a reason is required</p>
+
+                          <ExclusionReasonInputs
+                            value={exclusionReason}
+                            onChange={setExclusionReason}
+                          />
+
+                          <button
+                            onClick={() => handleDecision('EXCLUDE')}
+                            disabled={!exclusionReason}
+                            className="w-full btn-editorial bg-rose-600 text-white hover:bg-rose-700 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Confirm Exclusion
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+
                 <DecisionButton
                   label="Maybe"
                   shortcut="M"
@@ -332,14 +498,14 @@ export function ScreeningQueue() {
               <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-[0.2em] text-muted">
                 <span>Navigate Workspace</span>
                 <div className="flex gap-4">
-                  <button 
-                    onClick={previous} 
+                  <button
+                    onClick={previous}
                     disabled={currentIndex === 0}
                     className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <button 
+                  <button
                     onClick={next}
                     disabled={currentIndex >= totalStudies - 1}
                     className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
@@ -362,8 +528,8 @@ export function ScreeningQueue() {
       {!isFocused && (
         <footer className="fixed bottom-12 right-12 flex gap-8 bg-white/95 backdrop-blur-xl p-8 border border-border shadow-editorial rounded-sm z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <div className="flex items-center gap-6 border-r border-border pr-8">
-            <button 
-              onClick={previous} 
+            <button
+              onClick={previous}
               disabled={currentIndex === 0}
               className="p-2.5 hover:bg-paper rounded-full transition-all text-muted hover:text-ink border border-transparent hover:border-border disabled:opacity-50"
             >
@@ -373,7 +539,7 @@ export function ScreeningQueue() {
               <div className="font-mono text-xs font-bold text-ink">{currentIndex + 1}</div>
               <div className="font-mono text-[8px] uppercase tracking-tighter text-muted">of {totalStudies}</div>
             </div>
-            <button 
+            <button
               onClick={next}
               disabled={currentIndex >= totalStudies - 1}
               className="p-2.5 hover:bg-paper rounded-full transition-all text-muted hover:text-ink border border-transparent hover:border-border disabled:opacity-50"
@@ -381,7 +547,16 @@ export function ScreeningQueue() {
               <ChevronRight className="w-6 h-6" />
             </button>
           </div>
-          <div className="flex gap-4">
+          <div className="flex gap-4 items-center">
+            <div className="mr-4 flex gap-4 items-center">
+              <ConfidenceSlider
+                value={confidence}
+                onChange={setConfidence}
+                className="w-32"
+              />
+              {/* Notes toggle for footer mode - simplified */}
+            </div>
+
             <DecisionButtonSmall
               label="Exclude (E)"
               color="red"
@@ -438,14 +613,14 @@ function MetadataBadge({ icon, label, variant = 'default' }: { icon: React.React
   );
 }
 
-function DecisionButton({ label, shortcut, icon, color, active, loading, onClick }: { 
-  label: string, 
-  shortcut: string, 
-  icon: React.ReactNode, 
-  color: 'green' | 'red' | 'muted', 
-  active: boolean, 
+function DecisionButton({ label, shortcut, icon, color, active, loading, onClick }: {
+  label: string,
+  shortcut: string,
+  icon: React.ReactNode,
+  color: 'green' | 'red' | 'muted',
+  active: boolean,
   loading?: boolean,
-  onClick: () => void 
+  onClick: () => void
 }) {
   const colors = {
     green: "hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-400",
@@ -482,12 +657,12 @@ function DecisionButton({ label, shortcut, icon, color, active, loading, onClick
   );
 }
 
-function DecisionButtonSmall({ label, color, active, loading, onClick }: { 
-  label: string, 
-  color: 'green' | 'red' | 'muted', 
-  active: boolean, 
+function DecisionButtonSmall({ label, color, active, loading, onClick }: {
+  label: string,
+  color: 'green' | 'red' | 'muted',
+  active: boolean,
   loading?: boolean,
-  onClick: () => void 
+  onClick: () => void
 }) {
   const colors = {
     green: "text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300",

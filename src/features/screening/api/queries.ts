@@ -1,8 +1,9 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { 
-  ScreeningQueueItem, 
+import { screeningApi } from "@/lib/api-client";
+import type {
+  ScreeningQueueItem,
   ScreeningDecisionInput,
   Conflict,
   ConflictResolutionInput,
@@ -36,7 +37,7 @@ async function fetchScreeningQueue(
     `/api/projects/${params.projectId}/screening/queue?${searchParams.toString()}`,
     { credentials: 'include' }
   );
-  
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.error?.message || "Failed to fetch screening queue");
@@ -152,6 +153,18 @@ export function useConflicts(
   });
 }
 
+export function useScreeningNextSteps(
+  projectId: string | undefined,
+  phase?: string
+) {
+  return useQuery({
+    queryKey: [...screeningKeys.all, "next-steps", projectId, phase] as const,
+    queryFn: () => screeningApi.getNextSteps(projectId!, phase),
+    enabled: !!projectId,
+    staleTime: 60 * 1000, // 1 minute
+  });
+}
+
 // ============== MUTATION HOOKS ==============
 
 export function useSubmitDecision(projectId: string) {
@@ -261,3 +274,65 @@ export function useBatchDecision(projectId: string) {
   });
 }
 
+export function useBatchOperation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { operation: string; projectWorkIds: string[]; targetPhase?: string; decision?: string }) =>
+      screeningApi.batchOperation(projectId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: screeningKeys.queues() });
+      queryClient.invalidateQueries({ queryKey: screeningKeys.conflicts(projectId) });
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "stats"] });
+      queryClient.invalidateQueries({ queryKey: [...screeningKeys.all, "next-steps"] });
+    },
+  });
+}
+
+// ============== PHASE ADVANCEMENT ==============
+
+interface AdvancePhaseInput {
+  currentPhase: ScreeningPhase;
+}
+
+interface AdvancePhaseResponse {
+  message: string;
+  advancedCount: number;
+  fromPhase: ScreeningPhase;
+  toPhase: ScreeningPhase;
+}
+
+async function advancePhase(
+  projectId: string,
+  input: AdvancePhaseInput
+): Promise<AdvancePhaseResponse> {
+  const response = await fetch(`/api/projects/${projectId}/screening/advance-phase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error?.message || "Failed to advance phase");
+  }
+
+  const data: ApiSuccessResponse<AdvancePhaseResponse> = await response.json();
+  return data.data;
+}
+
+export function useAdvancePhase(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: AdvancePhaseInput) => advancePhase(projectId, input),
+    onSuccess: () => {
+      // Invalidate all screening-related queries
+      queryClient.invalidateQueries({ queryKey: screeningKeys.queues() });
+      queryClient.invalidateQueries({ queryKey: screeningKeys.conflicts(projectId) });
+      queryClient.invalidateQueries({ queryKey: ["projects", projectId, "stats"] });
+      queryClient.invalidateQueries({ queryKey: [...screeningKeys.all, "next-steps"] });
+    },
+  });
+}

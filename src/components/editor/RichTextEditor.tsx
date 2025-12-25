@@ -22,10 +22,10 @@ import { cn } from "@/lib/utils";
 import { useCallback } from "react";
 
 interface RichTextEditorProps {
-    content?: string;
+    content?: string | object;
     placeholder?: string;
-    onChange?: (html: string) => void;
-    onSave?: (html: string) => void;
+    onChange?: (json: object, html: string) => void;
+    onSave?: (json: object, html: string) => void;
     editable?: boolean;
     className?: string;
 }
@@ -60,7 +60,7 @@ export function RichTextEditor({
         content,
         editable,
         onUpdate: ({ editor }) => {
-            onChange?.(editor.getHTML());
+            onChange?.(editor.getJSON(), editor.getHTML());
         },
         editorProps: {
             attributes: {

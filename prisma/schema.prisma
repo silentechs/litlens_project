@@ -223,6 +223,7 @@ model Project {
   isPublic        Boolean  @default(false)
   blindScreening  Boolean  @default(true)
   requireDualScreening Boolean @default(true)
+  highlightKeywords String[] @default([])
   
   // Timestamps
   createdAt       DateTime @default(now())
@@ -457,7 +458,8 @@ model ScreeningDecisionRecord {
   decision      ScreeningDecision
   reasoning     String?  @db.Text
   exclusionReason String?
-  
+  confidence    Int?     // User's confidence score (0-100)
+
   // AI assistance
   aiSuggestion      ScreeningDecision?
   aiConfidence      Float?
@@ -1189,6 +1191,7 @@ enum ActivityType {
   PROJECT_UPDATED
   STUDY_IMPORTED
   SCREENING_DECISION
+  PHASE_ADVANCED
   CONFLICT_RESOLVED
   EXTRACTION_COMPLETED
   QUALITY_ASSESSED

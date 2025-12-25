@@ -70,7 +70,9 @@ function NavItem({
 function OpsNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () => void }) {
   const pathname = usePathname();
   const { currentProjectId } = useAppStore();
-  const pid = currentProjectId || '1';
+
+  // If no project is selected, project-specific links go to the projects list
+  const projectBaseUrl = currentProjectId ? `/project/${currentProjectId}` : '/projects';
 
   return (
     <>
@@ -83,9 +85,9 @@ function OpsNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () => 
         href="/projects"
         onClick={onItemClick}
       />
-      <NavItem icon={<Database className="w-5 h-5" />} label="Import" isOpen={isOpen} active={pathname.includes('/import')} href={`/project/${pid}/import`} onClick={onItemClick} />
-      <NavItem icon={<Users className="w-5 h-5" />} label="Team" isOpen={isOpen} active={pathname.includes('/team')} href={`/project/${pid}/team`} onClick={onItemClick} />
-      <NavItem icon={<LineChart className="w-5 h-5" />} label="Analytics" isOpen={isOpen} active={pathname.includes('/analytics')} href={`/project/${pid}/analytics`} onClick={onItemClick} />
+      <NavItem icon={<Database className="w-5 h-5" />} label="Import" isOpen={isOpen} active={pathname.includes('/import')} href={currentProjectId ? `${projectBaseUrl}/import` : '/projects'} onClick={onItemClick} />
+      <NavItem icon={<Users className="w-5 h-5" />} label="Team" isOpen={isOpen} active={pathname.includes('/team')} href={currentProjectId ? `${projectBaseUrl}/team` : '/projects'} onClick={onItemClick} />
+      <NavItem icon={<LineChart className="w-5 h-5" />} label="Analytics" isOpen={isOpen} active={pathname.includes('/analytics')} href={currentProjectId ? `${projectBaseUrl}/analytics` : '/projects'} onClick={onItemClick} />
     </>
   );
 }

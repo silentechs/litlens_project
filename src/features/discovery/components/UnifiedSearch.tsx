@@ -18,16 +18,53 @@ import {
   Search,
   BookOpen,
   Check,
+  X,
+  Calendar,
+  FileText,
+  Unlock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 
 type SearchTab = 'external' | 'internal' | 'semantic';
+
+interface SearchFilters {
+  yearFrom: string;
+  yearTo: string;
+  openAccess: boolean;
+  type: string;
+}
 
 export function UnifiedSearch() {
   const { currentProjectId } = useAppStore();
   const [activeTab, setActiveTab] = useState<SearchTab>('external');
   const [query, setQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<SearchFilters>({
+    yearFrom: "",
+    yearTo: "",
+    openAccess: false,
+    type: "",
+  });
+
+  // Build active filters for query
+  const activeFilters = {
+    yearFrom: filters.yearFrom ? parseInt(filters.yearFrom) : undefined,
+    yearTo: filters.yearTo ? parseInt(filters.yearTo) : undefined,
+    openAccess: filters.openAccess || undefined,
+    type: filters.type || undefined,
+  };
+
+  // Count active filters
+  const activeFilterCount = [
+    filters.yearFrom,
+    filters.yearTo,
+    filters.openAccess,
+    filters.type,
+  ].filter(Boolean).length;
 
   // Fetch search results
   const { 
@@ -41,6 +78,7 @@ export function UnifiedSearch() {
       type: activeTab,
       projectId: currentProjectId || undefined,
       limit: 20,
+      filters: activeFilters,
     },
     { enabled: searchQuery.length >= 2 }
   );
@@ -57,6 +95,16 @@ export function UnifiedSearch() {
       setSearchQuery(query);
     }
   }, [query]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setFilters({
+      yearFrom: "",
+      yearTo: "",
+      openAccess: false,
+      type: "",
+    });
+  };
 
   return (
     <div className="space-y-12 pb-20">
@@ -78,9 +126,18 @@ export function UnifiedSearch() {
         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-6">
           <button 
             type="button"
-            className="p-3 hover:bg-paper rounded-full text-muted hover:text-ink transition-all"
+            onClick={() => setShowFilters(!showFilters)}
+            className={cn(
+              "p-3 rounded-full transition-all relative",
+              showFilters ? "bg-ink text-paper" : "hover:bg-paper text-muted hover:text-ink"
+            )}
           >
             <Filter className="w-8 h-8" />
+            {activeFilterCount > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-intel-blue text-white text-[10px] font-mono rounded-full flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
           <div className="h-12 w-[1px] bg-border" />
           <button type="submit">
@@ -90,6 +147,138 @@ export function UnifiedSearch() {
           </button>
         </div>
       </form>
+
+      {/* Filters Panel */}
+      {showFilters && (
+        <div className="max-w-5xl bg-white border border-border p-8 space-y-6 animate-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center justify-between">
+            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Search Filters</h3>
+            {activeFilterCount > 0 && (
+              <button 
+                onClick={clearFilters}
+                className="text-[10px] font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {/* Year Range */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted">
+                <Calendar className="w-3 h-3" />
+                Year From
+              </label>
+              <Input
+                type="number"
+                placeholder="e.g., 2020"
+                value={filters.yearFrom}
+                onChange={(e) => setFilters(f => ({ ...f, yearFrom: e.target.value }))}
+                className="font-mono"
+                min={1900}
+                max={new Date().getFullYear()}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted">
+                <Calendar className="w-3 h-3" />
+                Year To
+              </label>
+              <Input
+                type="number"
+                placeholder="e.g., 2024"
+                value={filters.yearTo}
+                onChange={(e) => setFilters(f => ({ ...f, yearTo: e.target.value }))}
+                className="font-mono"
+                min={1900}
+                max={new Date().getFullYear()}
+              />
+            </div>
+            
+            {/* Study Type */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted">
+                <FileText className="w-3 h-3" />
+                Study Type
+              </label>
+              <select
+                value={filters.type}
+                onChange={(e) => setFilters(f => ({ ...f, type: e.target.value }))}
+                className="w-full h-10 px-3 border border-border rounded-sm font-mono text-sm bg-white focus:border-ink outline-none"
+              >
+                <option value="">All Types</option>
+                <option value="journal-article">Journal Article</option>
+                <option value="review">Review</option>
+                <option value="meta-analysis">Meta-Analysis</option>
+                <option value="book-chapter">Book Chapter</option>
+                <option value="proceedings-article">Conference Paper</option>
+                <option value="preprint">Preprint</option>
+              </select>
+            </div>
+            
+            {/* Open Access */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-muted">
+                <Unlock className="w-3 h-3" />
+                Access
+              </label>
+              <button
+                onClick={() => setFilters(f => ({ ...f, openAccess: !f.openAccess }))}
+                className={cn(
+                  "w-full h-10 px-3 border rounded-sm font-mono text-sm transition-all flex items-center justify-center gap-2",
+                  filters.openAccess 
+                    ? "border-emerald-500 bg-emerald-50 text-emerald-700" 
+                    : "border-border hover:border-ink"
+                )}
+              >
+                {filters.openAccess && <Check className="w-4 h-4" />}
+                Open Access Only
+              </button>
+            </div>
+          </div>
+
+          {/* Active Filters Display */}
+          {activeFilterCount > 0 && (
+            <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-muted">Active:</span>
+              {filters.yearFrom && (
+                <Badge variant="secondary" className="font-mono text-xs">
+                  From {filters.yearFrom}
+                  <button onClick={() => setFilters(f => ({ ...f, yearFrom: "" }))} className="ml-1">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {filters.yearTo && (
+                <Badge variant="secondary" className="font-mono text-xs">
+                  To {filters.yearTo}
+                  <button onClick={() => setFilters(f => ({ ...f, yearTo: "" }))} className="ml-1">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {filters.type && (
+                <Badge variant="secondary" className="font-mono text-xs">
+                  {filters.type}
+                  <button onClick={() => setFilters(f => ({ ...f, type: "" }))} className="ml-1">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+              {filters.openAccess && (
+                <Badge variant="secondary" className="font-mono text-xs bg-emerald-100 text-emerald-700">
+                  Open Access
+                  <button onClick={() => setFilters(f => ({ ...f, openAccess: false }))} className="ml-1">
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-12 border-b border-border">

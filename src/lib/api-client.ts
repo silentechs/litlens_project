@@ -383,6 +383,15 @@ export const screeningApi = {
       `/api/projects/${projectId}/screening/ai-suggestions`,
       { projectWorkId }
     ),
+
+  getNextSteps: (projectId: string, phase?: string) =>
+    api.get<import("@/types/screening").ScreeningNextSteps>(
+      `/api/projects/${projectId}/screening/next-steps`,
+      { phase }
+    ),
+
+  batchOperation: (projectId: string, data: { operation: string; projectWorkIds: string[]; targetPhase?: string; decision?: string }) =>
+    api.post<any>(`/api/projects/${projectId}/screening/batch`, data),
 };
 
 // ---------- Conflicts ----------

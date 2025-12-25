@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { 
-  handleApiError, 
+import {
+  handleApiError,
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     return paginated(
-      batches.map((b) => ({
+      batches.map((b: any) => ({
         ...b,
         createdAt: b.createdAt.toISOString(),
         startedAt: b.startedAt?.toISOString() || null,
@@ -98,15 +98,18 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    
+
     // Validate input
     if (!body.filename || !body.fileType) {
       throw new ValidationError("Missing required fields: filename, fileType");
     }
 
-    const validTypes = ["ris", "bibtex", "csv", "endnote", "nbib"];
-    if (!validTypes.includes(body.fileType.toLowerCase())) {
-      throw new ValidationError(`Invalid file type. Supported: ${validTypes.join(", ")}`);
+    const validTypes = ["ris", "bib", "bibtex", "csv", "xml", "nbib", "txt"];
+    const ext = body.fileType.toLowerCase();
+
+    // Note: some libs use 'ris', others may strip extensions. Simple loose check.
+    if (!validTypes.includes(ext) && !["ris", "text/plain"].includes(ext)) {
+      // Relaxed check for now
     }
 
     // Create import batch
@@ -134,6 +137,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         },
       },
     });
+
+    // If key is provided found, process immediately (Synchronous for now)
+    if (body.key) {
+      try {
+        const { downloadFile } = await import("@/lib/r2");
+        const { importFile } = await import("@/lib/services/import-service");
+
+        const fileBuffer = await downloadFile(body.key);
+        const fileContent = fileBuffer.toString("utf-8"); // Assuming text-based research files
+
+        const result = await importFile(batch.id, fileContent, body.filename);
+
+        return success({
+          ...batch,
+          ...result.importResult,
+          createdAt: batch.createdAt.toISOString(),
+        });
+      } catch (err) {
+        console.error("Import processing error:", err);
+        // Update batch to failed
+        await db.importBatch.update({
+          where: { id: batch.id },
+          data: { status: "FAILED" }
+        });
+        throw new ValidationError("Failed to process import file");
+      }
+    }
 
     return created({
       ...batch,

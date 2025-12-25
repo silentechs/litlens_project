@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useResolveConflict } from "@/features/screening/api/queries";
 
 interface Conflict {
   id: string;
@@ -41,19 +42,39 @@ export function ConflictAdjudicator() {
   const params = useParams();
   const projectId = params.id as string;
 
-  const { data, isLoading } = useQuery<ConflictsResponse>({
+  const { data, isLoading, refetch } = useQuery<ConflictsResponse>({
     queryKey: ["project-conflicts", projectId],
     queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}/conflicts?status=OPEN`);
+      const res = await fetch(`/api/projects/${projectId}/conflicts?status=PENDING`);
       if (!res.ok) throw new Error("Failed to fetch conflicts");
       return res.json();
     },
     enabled: !!projectId,
   });
 
+  const resolveConflict = useResolveConflict(projectId);
   const conflicts = data?.items || [];
   const [currentIndex, setCurrentIndex] = useState(0);
   const activeConflict = conflicts[currentIndex];
+
+  const handleResolve = async (decision: 'INCLUDE' | 'EXCLUDE' | 'MAYBE') => {
+    if (!activeConflict) return;
+
+    try {
+      await resolveConflict.mutateAsync({
+        conflictId: activeConflict.id,
+        finalDecision: decision,
+        reasoning: "Adjudicated via Adjudicator Mode"
+      });
+      // Move to next or refresh
+      if (conflicts.length > 1) {
+        setCurrentIndex(prev => (prev + 1) % (conflicts.length - 1));
+      }
+      refetch();
+    } catch (error) {
+      console.error("Failed to resolve conflict", error);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -138,21 +159,21 @@ export function ConflictAdjudicator() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-4">
                 <FinalAction
                   label="Include"
-                  icon={<Check className="w-5 h-5" />}
+                  icon={resolveConflict.isPending ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Check className="w-5 h-5" />}
                   color="green"
-                  onClick={() => console.log('Include')}
+                  onClick={() => handleResolve('INCLUDE')}
                 />
                 <FinalAction
                   label="Exclude"
-                  icon={<X className="w-5 h-5" />}
+                  icon={resolveConflict.isPending ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <X className="w-5 h-5" />}
                   color="red"
-                  onClick={() => console.log('Exclude')}
+                  onClick={() => handleResolve('EXCLUDE')}
                 />
                 <FinalAction
-                  label="Needs Discussion"
+                  label="Undecided"
                   icon={<MessageSquare className="w-5 h-5" />}
                   color="muted"
-                  onClick={() => console.log('Discuss')}
+                  onClick={() => handleResolve('MAYBE')}
                 />
               </div>
 

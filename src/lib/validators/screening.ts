@@ -13,8 +13,17 @@ export const submitDecisionSchema = z.object({
   decision: screeningDecisionSchema,
   reasoning: z.string().max(2000).optional(),
   exclusionReason: z.string().max(500).optional(),
+  confidence: z.number().int().min(0).max(100).optional(),
   timeSpentMs: z.number().int().positive().optional(),
   followedAi: z.boolean().optional(),
+}).refine((data) => {
+  if (data.decision === "EXCLUDE" && !data.exclusionReason) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Exclusion reason is required when excluding a study",
+  path: ["exclusionReason"],
 });
 
 export const batchDecisionSchema = z.object({

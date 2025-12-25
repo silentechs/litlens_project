@@ -17,6 +17,9 @@ export type { ProjectStatus, ProjectRole } from "@prisma/client";
 
 export interface Project extends PrismaProject {
   _count?: ProjectCounts;
+  highlightKeywords: string[];
+  blindScreening: boolean;
+  requireDualScreening: boolean;
 }
 
 export interface ProjectCounts {
@@ -32,7 +35,7 @@ export interface ProjectWithRelations extends Project {
   _count: ProjectCounts;
 }
 
-export interface ProjectMember extends PrismaProjectMember {}
+export interface ProjectMember extends PrismaProjectMember { }
 
 export interface ProjectMemberWithUser extends ProjectMember {
   user: ProjectUserSummary;

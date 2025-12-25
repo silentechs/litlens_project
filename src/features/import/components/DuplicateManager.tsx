@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  Copy, 
-  ArrowRight, 
-  GitMerge, 
-  Check, 
-  X, 
+import { useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import {
+  Copy,
+  ArrowRight,
+  GitMerge,
+  Check,
+  X,
   Info,
   ChevronDown,
   ArrowDown
@@ -52,9 +54,16 @@ const MOCK_DUPLICATES: DuplicateCandidate[] = [
 
 export function DuplicateManager() {
   const [candidates, setCandidates] = useState(MOCK_DUPLICATES);
+  const router = useRouter();
+  const params = useParams();
+  const projectId = params.id as string;
 
   const resolve = (id: string, action: 'MERGE' | 'KEEP_BOTH') => {
     setCandidates(prev => prev.filter(c => c.id !== id));
+  };
+
+  const goToScreening = () => {
+    router.push(`/project/${projectId}/screening`);
   };
 
   return (
@@ -77,7 +86,7 @@ export function DuplicateManager() {
         <div className="py-40 text-center space-y-4">
           <Check className="w-12 h-12 mx-auto text-muted opacity-20" />
           <h2 className="text-3xl font-serif italic text-muted">No duplicate candidates remaining.</h2>
-          <button className="btn-editorial">Continue to Screening</button>
+          <button onClick={goToScreening} className="btn-editorial">Continue to Screening</button>
         </div>
       ) : (
         <div className="space-y-12">
@@ -95,15 +104,15 @@ export function DuplicateManager() {
                   <span className="font-mono text-[10px] uppercase tracking-widest text-intel-blue">Confidence</span>
                   <div className="text-2xl font-serif font-bold text-intel-blue">{(candidate.confidence * 100).toFixed(0)}%</div>
                 </div>
-                
-                <button 
+
+                <button
                   onClick={() => resolve(candidate.id, 'MERGE')}
                   className="w-full bg-ink text-paper py-4 flex items-center justify-center gap-2 hover:bg-ink/90 transition-all"
                 >
                   <GitMerge className="w-4 h-4" />
                   <span className="font-mono text-xs uppercase tracking-widest">Merge</span>
                 </button>
-                <button 
+                <button
                   onClick={() => resolve(candidate.id, 'KEEP_BOTH')}
                   className="w-full py-4 border border-border flex items-center justify-center gap-2 hover:bg-paper transition-all"
                 >
@@ -131,13 +140,13 @@ function PaperCard({ title, paper }: { title: string, paper: Paper }) {
   return (
     <div className="bg-white p-8 space-y-6 relative overflow-hidden">
       <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted border-b border-border pb-4">{title}</h3>
-      
+
       <div className="space-y-4">
         <div className="space-y-1">
           <label className="text-[10px] font-mono uppercase text-muted tracking-tighter">Title</label>
           <p className="text-2xl font-serif leading-tight">{paper.title}</p>
         </div>
-        
+
         <div className="grid grid-cols-2 gap-4 pt-4">
           <div className="space-y-1">
             <label className="text-[10px] font-mono uppercase text-muted tracking-tighter">Authors</label>
