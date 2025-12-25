@@ -31,47 +31,62 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        const parsed = credentialsSchema.safeParse(credentials);
-        if (!parsed.success) {
+        try {
+          const parsed = credentialsSchema.safeParse(credentials);
+          if (!parsed.success) {
+            console.log("[Auth] Invalid credentials format:", parsed.error.errors);
+            return null;
+          }
+
+          const { email, password } = parsed.data;
+
+          // Find user with password
+          const user = await db.user.findUnique({
+            where: { email: email.toLowerCase() },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              image: true,
+              password: true,
+              role: true,
+              emailVerified: true,
+            },
+          });
+
+          // User not found or no password set
+          if (!user) {
+            console.log("[Auth] User not found:", email);
+            return null;
+          }
+          
+          if (!user.password) {
+            console.log("[Auth] User has no password set (magic link user):", email);
+            return null;
+          }
+
+          // Verify password
+          const isValid = await bcrypt.compare(password, user.password);
+          if (!isValid) {
+            console.log("[Auth] Invalid password for:", email);
+            return null;
+          }
+
+          console.log("[Auth] Login successful for:", email);
+          
+          // Return user data (without password)
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            image: user.image,
+            role: user.role,
+            emailVerified: user.emailVerified,
+          };
+        } catch (error) {
+          console.error("[Auth] Authorization error:", error);
           return null;
         }
-
-        const { email, password } = parsed.data;
-
-        // Find user with password
-        const user = await db.user.findUnique({
-          where: { email },
-          select: {
-            id: true,
-            email: true,
-            name: true,
-            image: true,
-            password: true,
-            role: true,
-            emailVerified: true,
-          },
-        });
-
-        // User not found or no password set
-        if (!user || !user.password) {
-          return null;
-        }
-
-        // Verify password
-        const isValid = await bcrypt.compare(password, user.password);
-        if (!isValid) {
-          return null;
-        }
-
-        // Return user data (without password)
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-          role: user.role,
-          emailVerified: user.emailVerified,
-        };
       },
     }),
   ],
