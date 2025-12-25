@@ -5,10 +5,25 @@
  * Run with: npx tsx prisma/seed.ts
  */
 
-import { PrismaClient, ProjectWorkStatus, ScreeningPhase, ProtocolStatus, ImportStatus } from "@prisma/client";
+import { ProjectWorkStatus, ScreeningPhase, ProtocolStatus, ImportStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { neonConfig } from "@neondatabase/serverless";
 import { hash } from "bcryptjs";
+import "dotenv/config";
+import ws from "ws";
 
-const prisma = new PrismaClient();
+if (!process.env.DATABASE_URL) {
+  console.error("❌ DATABASE_URL environment variable is not set");
+  console.error("   Please set DATABASE_URL in .env.local or .env");
+  process.exit(1);
+}
+
+// Set up WebSocket for Neon
+neonConfig.webSocketConstructor = ws;
+
+const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
+const prisma = new PrismaClient({ adapter });
 
 // ============== CONFIGURATION ==============
 
@@ -441,7 +456,7 @@ async function main() {
       projectId: project1.id,
       title: "Mental Health Interventions Review Protocol",
       version: 1,
-      status: "ACTIVE" as ProtocolStatus,
+      status: "APPROVED" as ProtocolStatus,
       content: {
         inclusionCriteria: {
           studyTypes: ["RCT", "Systematic Review", "Meta-analysis"],
