@@ -155,7 +155,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     });
 
     const body = await request.json().catch(() => ({}));
-    const { format, include } = bodySchema.parse(body);
+    const { format } = bodySchema.parse(body);
 
     // Gather all analytics
     const [overview, reviewers, timeline, aiPerformance, conflicts, prismaFlow] = await Promise.all([

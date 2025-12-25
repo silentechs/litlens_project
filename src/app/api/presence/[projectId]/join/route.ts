@@ -3,9 +3,7 @@ import { auth } from "@/lib/auth";
 import { handleApiError, UnauthorizedError, NotFoundError } from "@/lib/api";
 import { db } from "@/lib/db";
 import {
-    publishPresenceJoin,
-    publishPresenceLeave,
-    publishTypingIndicator
+    publishPresenceJoin
 } from "@/lib/events/publisher";
 
 interface RouteParams {

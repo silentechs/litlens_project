@@ -75,7 +75,8 @@ export async function PATCH(request: NextRequest) {
 
     // Remove the role field from data since it's not a database field
     // (it's for frontend onboarding tracking only)
-    const { role: _, ...updateData } = data;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { role, ...updateData } = data;
 
     const user = await db.user.update({
       where: { id: session.user.id },

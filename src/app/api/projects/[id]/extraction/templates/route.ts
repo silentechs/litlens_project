@@ -6,14 +6,12 @@ import {
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
-  success,
   created,
   paginated,
   buildPaginationArgs,
 } from "@/lib/api";
 import { 
   createExtractionTemplate, 
-  updateExtractionTemplate,
   type FieldDefinition 
 } from "@/lib/services/extraction-service";
 import { z } from "zod";

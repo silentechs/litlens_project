@@ -49,15 +49,6 @@ export async function GET(request: NextRequest) {
       "abstract",
     ]);
 
-    // Also search by author name (requires different approach)
-    const authorSearchCondition = {
-      authors: {
-        some: {
-          name: { contains: query, mode: "insensitive" as const },
-        },
-      },
-    };
-
     // Year filter
     const yearFilter: Record<string, unknown> = {};
     if (filters?.yearFrom) {
@@ -74,10 +65,7 @@ export async function GET(request: NextRequest) {
       where: {
         userId: session.user.id,
         work: {
-          OR: [
-            workSearchConditions || {},
-            authorSearchCondition,
-          ],
+          ...(workSearchConditions || {}),
           ...yearFilter,
         },
       },
@@ -105,14 +93,8 @@ export async function GET(request: NextRequest) {
         pmid: item.work.pmid,
         url: item.work.url,
         citationCount: item.work.citationCount || 0,
-        source: "library" as const,
+        source: "internal" as const,
         relevanceScore: 0.9, // Library items get high relevance
-        metadata: {
-          libraryItemId: item.id,
-          addedAt: item.createdAt.toISOString(),
-          tags: item.tags,
-          notes: item.notes,
-        },
       });
     }
 
@@ -134,10 +116,7 @@ export async function GET(request: NextRequest) {
       where: {
         project: projectCondition,
         work: {
-          OR: [
-            workSearchConditions || {},
-            authorSearchCondition,
-          ],
+          ...(workSearchConditions || {}),
           ...yearFilter,
         },
         ...projectWorkFilters,
@@ -147,7 +126,7 @@ export async function GET(request: NextRequest) {
         project: {
           select: {
             id: true,
-            name: true,
+            title: true,
           },
         },
       },
@@ -179,13 +158,6 @@ export async function GET(request: NextRequest) {
         citationCount: pw.work.citationCount || 0,
         source: "internal" as const,
         relevanceScore: 0.85,
-        metadata: {
-          projectWorkId: pw.id,
-          projectId: pw.project.id,
-          projectName: pw.project.name,
-          screeningStatus: pw.screeningStatus,
-          screeningPhase: pw.screeningPhase,
-        },
       });
     }
 
@@ -195,10 +167,7 @@ export async function GET(request: NextRequest) {
         where: {
           userId: session.user.id,
           work: {
-            OR: [
-              workSearchConditions || {},
-              authorSearchCondition,
-            ],
+            ...(workSearchConditions || {}),
             ...yearFilter,
           },
         },
@@ -207,10 +176,7 @@ export async function GET(request: NextRequest) {
         where: {
           project: projectCondition,
           work: {
-            OR: [
-              workSearchConditions || {},
-              authorSearchCondition,
-            ],
+            ...(workSearchConditions || {}),
             ...yearFilter,
           },
           ...projectWorkFilters,

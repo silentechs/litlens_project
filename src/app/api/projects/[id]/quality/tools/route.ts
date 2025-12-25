@@ -12,9 +12,6 @@ import {
 import {
   createAssessmentTool,
   getProjectTools,
-  ROB2_TEMPLATE,
-  ROBINS_I_TEMPLATE,
-  NEWCASTLE_OTTAWA_COHORT_TEMPLATE,
 } from "@/lib/services/quality-assessment";
 import { QualityToolType } from "@prisma/client";
 import { z } from "zod";

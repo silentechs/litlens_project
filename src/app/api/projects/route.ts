@@ -4,7 +4,6 @@ import { auth } from "@/lib/auth";
 import {
   handleApiError,
   UnauthorizedError,
-  success,
   created,
   paginated,
   buildPaginationArgs,
@@ -114,7 +113,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Transform response and apply self-healing for stuck statuses
-    const items = await Promise.all(projects.map(async (project: any) => {
+    const items = await Promise.all(projects.map(async (project) => {
       // --- SELF-HEALING BLOCK ---
       // Fix studies where decisions exist but status is still PENDING
       // This ensures progress is reported correctly even if individual project pages haven't been visited
@@ -155,15 +154,15 @@ export async function GET(request: NextRequest) {
         });
 
         // Update the local stats for this project
-        progressStats.push(...updatedStats.map((s: any) => ({ ...s, projectId: project.id })));
+        progressStats.push(...updatedStats.map((s) => ({ ...s, projectId: project.id })));
       }
       // --------------------------
 
       // Calculate real progress
-      const stats = progressStats.filter((s: any) => s.projectId === project.id);
+      const stats = progressStats.filter((s) => s.projectId === project.id);
       const totalWorks = project._count.projectWorks;
 
-      const completedCount = stats.reduce((acc: number, curr: any) => {
+      const completedCount = stats.reduce((acc: number, curr) => {
         if (["INCLUDED", "EXCLUDED", "MAYBE"].includes(curr.status)) {
           return acc + curr._count;
         }
@@ -186,7 +185,7 @@ export async function GET(request: NextRequest) {
           projectWorks: totalWorks,
           members: project._count.members,
         },
-        members: project.members.map((m: any) => ({
+        members: project.members.map((m) => ({
           user: m.user,
           role: m.role,
         })),

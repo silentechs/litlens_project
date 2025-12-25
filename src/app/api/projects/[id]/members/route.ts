@@ -9,7 +9,6 @@ import {
   ValidationError,
   success, 
   created,
-  noContent,
 } from "@/lib/api";
 import { z } from "zod";
 
@@ -21,11 +20,6 @@ interface RouteParams {
 const addMemberSchema = z.object({
   email: z.string().email("Invalid email address"),
   role: z.enum(["REVIEWER", "LEAD", "OBSERVER"]).default("REVIEWER"),
-});
-
-// Schema for updating a member
-const updateMemberSchema = z.object({
-  role: z.enum(["OWNER", "LEAD", "REVIEWER", "OBSERVER"]),
 });
 
 // GET /api/projects/[id]/members - List all project members

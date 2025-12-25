@@ -13,7 +13,6 @@ import {
 } from "@/lib/api";
 import { 
   saveExtractionData, 
-  getExtractionData,
   getExtractionProgress,
 } from "@/lib/services/extraction-service";
 import { z } from "zod";

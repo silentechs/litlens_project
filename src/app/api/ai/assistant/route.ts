@@ -56,6 +56,11 @@ interface AssistantAction {
     data?: Record<string, unknown>;
 }
 
+interface Citation {
+    title: string;
+    year?: string | number;
+}
+
 async function generateAIResponse(
     message: string,
     projectId?: string,
@@ -71,7 +76,7 @@ async function generateAIResponse(
     }
     
     if (context?.citations && Array.isArray(context.citations)) {
-      systemContext += `\n\nAvailable citations: ${(context.citations as any[]).map((c: any) => `${c.title} (${c.year})`).join(", ")}`;
+      systemContext += `\n\nAvailable citations: ${(context.citations as Citation[]).map((c) => `${c.title} (${c.year || 'n.d.'})`).join(", ")}`;
     }
 
     // Build conversation messages

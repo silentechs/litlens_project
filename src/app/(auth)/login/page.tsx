@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react";
 import { signIn } from "next-auth/react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Lock, ArrowRight, AlertCircle, Loader2, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -10,7 +10,6 @@ import Link from "next/link";
 type AuthMode = "password" | "magic-link";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);

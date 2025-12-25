@@ -1,6 +1,5 @@
 "use client";
 
-import { useAppStore } from "@/stores/app-store";
 import { Users, ArrowRight } from "lucide-react";
 import Link from "next/link";
 

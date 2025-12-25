@@ -8,7 +8,7 @@ import {
   success,
   noContent,
 } from "@/lib/api";
-import { getGraph, shareGraph } from "@/lib/services/research-graph";
+import { getGraph } from "@/lib/services/research-graph";
 import { z } from "zod";
 
 interface RouteParams {

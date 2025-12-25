@@ -80,7 +80,7 @@ export default function LandingPage() {
                             <div className="space-y-4">
                                 <h2 className="text-5xl font-serif">A Living Map of <span className="italic">Human Thought</span></h2>
                                 <p className="text-xl font-serif italic text-muted leading-relaxed">
-                                    Our dynamic citation engine doesn't just list references—it visualizes the intellectual gravity of every paper, uncovering hidden connections in your field.
+                                    Our dynamic citation engine doesn&apos;t just list references—it visualizes the intellectual gravity of every paper, uncovering hidden connections in your field.
                                 </p>
                             </div>
 
@@ -112,7 +112,7 @@ export default function LandingPage() {
             {/* Philosophy Section */}
             <section id="methodology" className="py-40 relative">
                 <div className="max-w-4xl mx-auto px-8 text-center space-y-12">
-                    <h2 className="text-6xl font-serif italic tracking-tight">"The quality of a review is determined by the depth of its lens."</h2>
+                    <h2 className="text-6xl font-serif italic tracking-tight">&ldquo;The quality of a review is determined by the depth of its lens.&rdquo;</h2>
                     <div className="accent-line mx-auto w-24 opacity-20" />
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-left pt-12">
                         <div className="space-y-4">

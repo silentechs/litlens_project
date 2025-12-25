@@ -30,7 +30,7 @@ export default async function AdminLayout({
 }: {
     children: React.ReactNode;
 }) {
-    const session = await requireAdmin();
+    await requireAdmin();
 
     return (
         <div className="min-h-screen bg-paper">

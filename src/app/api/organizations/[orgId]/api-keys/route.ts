@@ -4,7 +4,6 @@ import {
   handleApiError,
   UnauthorizedError,
   ForbiddenError,
-  NotFoundError,
   success,
   created,
   noContent,

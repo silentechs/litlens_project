@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import {
     Send,
     Sparkles,
-    User,
     Loader2,
     FileText,
     Search,
@@ -109,7 +108,7 @@ export function AIAssistant({
             };
 
             setMessages(prev => [...prev, assistantMessage]);
-        } catch (error) {
+        } catch {
             const errorMessage: Message = {
                 id: `error-${Date.now()}`,
                 role: "assistant",

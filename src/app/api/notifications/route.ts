@@ -4,10 +4,8 @@ import { auth } from "@/lib/auth";
 import { 
   handleApiError, 
   UnauthorizedError,
-  success,
   paginated,
 } from "@/lib/api";
-import { z } from "zod";
 
 // GET /api/notifications - Get user notifications (from activities)
 export async function GET(request: NextRequest) {
@@ -20,7 +18,6 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
-    const unreadOnly = searchParams.get("unread") === "true";
     const projectId = searchParams.get("projectId");
 
     // Get user's projects

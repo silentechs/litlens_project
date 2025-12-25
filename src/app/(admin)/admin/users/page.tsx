@@ -23,7 +23,7 @@ async function getUsers() {
         include: {
             _count: {
                 select: {
-                    projects: true,
+                    projectMembers: true,
                     activities: true,
                 },
             },
@@ -90,7 +90,7 @@ export default async function UsersPage() {
                                     <TableCell>
                                         <RoleBadge role={user.role} />
                                     </TableCell>
-                                    <TableCell>{user._count.projects}</TableCell>
+                                    <TableCell>{user._count.projectMembers}</TableCell>
                                     <TableCell>{user._count.activities}</TableCell>
                                     <TableCell className="text-muted">
                                         {new Date(user.createdAt).toLocaleDateString()}

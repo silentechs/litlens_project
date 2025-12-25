@@ -1,8 +1,8 @@
 "use client";
 
-import { Settings as SettingsIcon, Bell, Shield, User, Globe } from "lucide-react";
-
+import { Globe } from "lucide-react";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 
 export default function SettingsPage() {
   const { data: session } = useSession();
@@ -28,7 +28,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 rounded-full bg-paper border border-border flex items-center justify-center font-serif text-xl italic font-bold overflow-hidden">
                     {user?.image ? (
-                      <img src={user.image} alt={user.name || "User Avatar"} className="w-full h-full object-cover" />
+                      <Image src={user.image} alt={user.name || "User Avatar"} width={48} height={48} className="w-full h-full object-cover" />
                     ) : (
                       <span>{initial}</span>
                     )}

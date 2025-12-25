@@ -150,7 +150,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Permission checks
     const isOwner = requesterMembership.role === "OWNER";
-    const isLead = requesterMembership.role === "LEAD";
     const isSelf = memberToUpdate.userId === session.user.id;
 
     // Only owners can change roles

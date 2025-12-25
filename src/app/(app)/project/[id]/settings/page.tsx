@@ -1,15 +1,15 @@
 "use client";
 
 import { useProject, useUpdateProject } from "@/features/projects/api/queries";
-import { useAppStore } from "@/stores/app-store";
-import { Loader2, AlertCircle, Save, Shield, Users } from "lucide-react";
+import { Loader2, AlertCircle, Shield, Users } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
-export default function ProjectSettingsPage({ params }: { params: { id: string } }) {
-    const { data: project, isLoading, isError } = useProject(params.id);
+export default function ProjectSettingsPage({ params }: { params: Promise<{ id: string }> }) {
+    const { id } = use(params);
+    const { data: project, isLoading, isError } = useProject(id);
     const updateProject = useUpdateProject();
 
     const [requireDualScreening, setRequireDualScreening] = useState(false);
@@ -26,7 +26,7 @@ export default function ProjectSettingsPage({ params }: { params: { id: string }
     const handleSave = () => {
         updateProject.mutate(
             {
-                id: params.id,
+                id,
                 requireDualScreening,
                 blindScreening,
             },

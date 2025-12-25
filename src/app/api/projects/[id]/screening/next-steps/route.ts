@@ -8,7 +8,6 @@ import {
     success,
 } from "@/lib/api";
 import type { ScreeningPhase } from "@/types/screening";
-type ProjectWorkStatus = "PENDING" | "SCREENING" | "INCLUDED" | "EXCLUDED" | "MAYBE" | "CONFLICT";
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -114,14 +113,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             _count: true,
         });
 
-        // Map Prisma stats to our format
-        const phaseStats = {
-            total: 0,
-            included: 0,
-            excluded: 0,
-            maybe: 0,
-        };
-
         // Note: status in DB is SCREENING, COMPLETED, etc.
         // We need to look at decisions to really know include/exclude counts if work is still in SCREENING
         // But ideally, completed works have a final decision.
@@ -130,15 +121,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Let's get "Completed by team" vs "Total"
         const totalWorks = await db.projectWork.count({
             where: { projectId, phase: currentPhase }
-        });
-
-        // Count decisions to get precise stats even if work status isn't updated
-        const allDecisions = await db.screeningDecisionRecord.findMany({
-            where: {
-                projectWork: { projectId, phase: currentPhase },
-                phase: currentPhase
-            },
-            select: { decision: true }
         });
 
         // This is rough approximation because duplicate decisions exist (2 reviewers)

@@ -54,7 +54,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     return paginated(
-      batches.map((b: any) => ({
+      batches.map((b) => ({
         ...b,
         createdAt: b.createdAt.toISOString(),
         startedAt: b.startedAt?.toISOString() || null,

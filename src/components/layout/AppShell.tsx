@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useSession, signOut } from "next-auth/react";
-import { useAppStore, type AppMode } from "@/stores/app-store";
+import { useAppStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 import { useSSE } from "@/hooks/use-sse";
 
@@ -119,6 +119,7 @@ function AvatarMenu() {
       <DropdownMenu.Trigger asChild>
         <button className="w-8 h-8 rounded-full bg-paper border border-border flex items-center justify-center overflow-hidden hover:border-ink transition-colors outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
           {user?.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={user.image} alt={user.name || "User Avatar"} className="w-full h-full object-cover" />
           ) : (
             <div className="text-[10px] font-bold text-muted">{initials}</div>

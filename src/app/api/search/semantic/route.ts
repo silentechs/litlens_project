@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
       const projectWorks = await db.projectWork.findMany({
         where: {
           projectId,
-          screeningStatus: "INCLUDED",
+          status: "INCLUDED",
         },
         select: { workId: true },
       });
@@ -75,9 +75,6 @@ export async function GET(request: NextRequest) {
     // Fetch works with their content
     const works = await db.work.findMany({
       where: { id: { in: workIds } },
-      include: {
-        authors: true,
-      },
     });
 
     // Perform semantic-like search using keyword extraction and matching

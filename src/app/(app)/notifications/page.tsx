@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Bell, CheckCircle2, AlertCircle, MessageSquare, Clock } from "lucide-react";
+import { Bell, CheckCircle2, AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { useQuery } from "@tanstack/react-query";
@@ -13,7 +13,7 @@ interface NotificationAPIResponse {
         type: string;
         title: string;
         message: string;
-        metadata: any;
+        metadata: Record<string, unknown>;
         user: { name: string; image?: string };
         createdAt: string;
     }>;

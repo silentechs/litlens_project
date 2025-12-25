@@ -18,8 +18,6 @@ const createFolderSchema = z.object({
   parentId: z.string().cuid().optional().nullable(),
 });
 
-const updateFolderSchema = createFolderSchema.partial();
-
 // GET /api/library/folders - Get user's folders
 export async function GET(request: NextRequest) {
   try {

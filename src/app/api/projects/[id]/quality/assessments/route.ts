@@ -13,7 +13,6 @@ import {
 } from "@/lib/api";
 import { 
   saveAssessment, 
-  getAssessment,
   getProjectAssessmentSummary,
   getStudyAssessmentProgress,
   calculateOverallScore,

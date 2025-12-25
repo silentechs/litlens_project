@@ -13,9 +13,6 @@ import {
   updateWritingProject,
   deleteWritingProject,
   exportWritingProject,
-  addCitationSource,
-  removeCitationSource,
-  generateBibliography,
 } from "@/lib/services/writing-projects";
 import { z } from "zod";
 

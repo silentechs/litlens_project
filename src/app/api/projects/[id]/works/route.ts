@@ -35,7 +35,6 @@ const addWorkSchema = z.object({
     url: z.string().url().optional(),
     keywords: z.array(z.string().max(100)).max(50).optional(),
     source: z.enum(["openalex", "pubmed", "crossref", "internal", "import", "semantic"]).optional(),
-    externalId: z.string().optional(),
   }).optional(),
   // Optional metadata for the project work
   priority: z.number().int().min(0).max(100).optional(),
@@ -119,18 +118,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         ...buildPaginationArgs(page, limit),
         orderBy,
         include: {
-          work: {
-            include: {
-              authors: true,
-            },
-          },
-          addedBy: {
-            select: {
-              id: true,
-              name: true,
-              image: true,
-            },
-          },
+          work: true,
           _count: {
             select: {
               decisions: true,
@@ -209,11 +197,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         });
       }
 
-      if (!existingWork && workData.externalId && workData.source) {
+      // Check for existing work by DOI or PMID if not found by title
+      if (!existingWork && (workData.doi || workData.pmid)) {
         existingWork = await db.work.findFirst({
           where: {
-            externalId: workData.externalId,
-            source: workData.source,
+            OR: [
+              workData.doi ? { doi: workData.doi } : {},
+              workData.pmid ? { pmid: workData.pmid } : {},
+            ].filter(obj => Object.keys(obj).length > 0),
           },
         });
       }
@@ -233,7 +224,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
             url: workData.url,
             keywords: workData.keywords || [],
             source: workData.source || "internal",
-            externalId: workData.externalId,
             authors: {
               create: workData.authors.map((author, index) => ({
                 name: author.name,
@@ -266,7 +256,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Get project's current screening phase
     const project = await db.project.findUnique({
       where: { id: projectId },
-      select: { currentPhase: true },
+      select: { title: true },
     });
 
     // Create project work
@@ -274,25 +264,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: {
         projectId,
         workId: finalWorkId,
-        addedById: session.user.id,
-        screeningPhase: project?.currentPhase || "TITLE_ABSTRACT",
-        screeningStatus: "PENDING",
-        priority: priority || 50,
-        notes,
+        phase: "TITLE_ABSTRACT",
+        status: "PENDING",
+        priorityScore: priority || 50,
       },
       include: {
-        work: {
-          include: {
-            authors: true,
-          },
-        },
-        addedBy: {
-          select: {
-            id: true,
-            name: true,
-            image: true,
-          },
-        },
+        work: true,
       },
     });
 
@@ -301,7 +278,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: {
         userId: session.user.id,
         projectId,
-        type: "WORK_ADDED",
+        type: "STUDY_IMPORTED",
         description: `Added "${projectWork.work.title}" to project`,
         metadata: {
           projectWorkId: projectWork.id,
@@ -365,7 +342,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       data: {
         userId: session.user.id,
         projectId,
-        type: "WORKS_REMOVED",
+        type: "SETTINGS_UPDATED",
         description: `Removed ${result.count} works from project`,
         metadata: { workIds, count: result.count },
       },

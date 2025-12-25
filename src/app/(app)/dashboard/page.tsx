@@ -111,7 +111,7 @@ export default function DashboardPage() {
 }
 
 function ProjectCard({ project }: { project: ProjectListItem }) {
-  const { id, title, status, progress, members, lastActivity, _count } = project;
+  const { id, title, status, progress, members, lastActivity } = project;
   
   const statusDisplay = status.charAt(0) + status.slice(1).toLowerCase().replace("_", " ");
   
