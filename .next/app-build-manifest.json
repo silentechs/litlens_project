@@ -115,6 +115,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/(app)/writing/page.js"
+    ],
+    "/(app)/discover/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/(app)/discover/page.js"
     ]
   }
 }

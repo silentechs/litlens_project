@@ -350,6 +350,14 @@ model ProjectWork {
   phase         ScreeningPhase    @default(TITLE_ABSTRACT)
   finalDecision ScreeningDecision?
   
+  // AI-assisted screening
+  aiSuggestion  String?           // AI's recommended decision
+  aiConfidence  Float?            // 0-1 confidence score
+  aiReasoning   String?  @db.Text // AI's explanation
+  
+  // Queue optimization
+  priorityScore Int      @default(50)  // 0-100 priority for screening queue
+  
   // Duplicate tracking
   isDuplicate   Boolean  @default(false)
   duplicateOfId String?
@@ -363,14 +371,17 @@ model ProjectWork {
   duplicateOf   ProjectWork? @relation("DuplicateRelation", fields: [duplicateOfId], references: [id])
   duplicates    ProjectWork[] @relation("DuplicateRelation")
   
-  screeningDecisions ScreeningDecisionRecord[]
+  decisions          ScreeningDecisionRecord[]
   extractionData     ExtractionData[]
   qualityAssessments QualityAssessment[]
+  conflicts          Conflict[]
 
   @@unique([projectId, workId])
   @@index([projectId, status])
   @@index([projectId, phase])
   @@index([importBatchId])
+  @@index([aiConfidence])
+  @@index([priorityScore])
 }
 
 enum ProjectWorkStatus {
@@ -474,10 +485,16 @@ model Conflict {
   // The differing decisions
   decisions     Json     // Array of {reviewerId, decision, reasoning}
   
+  // Escalation tracking
+  escalatedAt      DateTime?
+  escalatedBy      String?
+  escalationReason String?  @db.Text
+  
   createdAt     DateTime @default(now())
   resolvedAt    DateTime?
   
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectWork   ProjectWork @relation(fields: [projectWorkId], references: [id], onDelete: Cascade)
   resolution    ConflictResolution?
 
   @@index([projectId, status])
