@@ -1,9 +1,8 @@
 {
-  "/api/projects/route": "app/api/projects/route.js",
-  "/(app)/notifications/page": "app/(app)/notifications/page.js",
-  "/(app)/settings/page": "app/(app)/settings/page.js",
-  "/(app)/project/[id]/import/page": "app/(app)/project/[id]/import/page.js",
-  "/(app)/dashboard/page": "app/(app)/dashboard/page.js",
   "/(app)/project/[id]/screening/page": "app/(app)/project/[id]/screening/page.js",
-  "/(app)/projects/page": "app/(app)/projects/page.js"
+  "/(app)/dashboard/page": "app/(app)/dashboard/page.js",
+  "/(app)/project/[id]/import/page": "app/(app)/project/[id]/import/page.js",
+  "/(app)/graphs/page": "app/(app)/graphs/page.js",
+  "/(app)/projects/page": "app/(app)/projects/page.js",
+  "/(app)/project/[id]/team/page": "app/(app)/project/[id]/team/page.js"
 }
