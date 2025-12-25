@@ -1,18 +1,28 @@
 /**
  * Event Publisher
- * Publish events to SSE subscribers
+ *
+ * Source of truth:
+ * - APIs/DB remain the source of truth.
+ * - These events are "invalidation hints" for clients (TanStack Query refetch).
+ *
+ * Transport:
+ * - Redis Pub/Sub (Upstash) when configured.
+ * - In-memory EventBus fallback for local/dev without Redis.
  */
 
-// ============== EVENT BUS ==============
+import { getRedisPublisher, isRedisConfigured } from "@/lib/redis";
 
-type EventCallback = (event: SSEEvent) => void;
+// ============== MESSAGE CONTRACT ==============
 
-interface SSEEvent {
+export interface SSEMessage {
   type: string;
   data: unknown;
-  userId?: string;
-  projectId?: string;
+  timestamp: number;
 }
+
+// ============== IN-MEMORY FALLBACK BUS ==============
+
+type EventCallback = (event: SSEMessage) => void;
 
 class EventBus {
   private subscribers: Map<string, Set<EventCallback>> = new Map();
@@ -28,7 +38,7 @@ class EventBus {
     };
   }
 
-  publish(channel: string, event: SSEEvent) {
+  publish(channel: string, event: SSEMessage) {
     this.subscribers.get(channel)?.forEach((callback) => {
       try {
         callback(event);
@@ -40,6 +50,22 @@ class EventBus {
 }
 
 export const eventBus = new EventBus();
+
+function publish(channel: string, message: SSEMessage) {
+  // Redis is the desired transport.
+  if (isRedisConfigured()) {
+    const publisher = getRedisPublisher();
+    if (!publisher) return;
+
+    void publisher.publish(channel, JSON.stringify(message)).catch((err) => {
+      console.error("[redis] publish error", { channel, err });
+    });
+    return;
+  }
+
+  // Fallback: in-memory bus (single-instance only).
+  eventBus.publish(channel, message);
+}
 
 // ============== EVENT HELPERS ==============
 
@@ -54,10 +80,18 @@ export function publishImportProgress(
     errorsCount: number;
   }
 ) {
-  eventBus.publish(`project:${projectId}`, {
-    type: "import:progress",
+  const status = data.status?.toUpperCase?.() || data.status;
+  const type =
+    status === "COMPLETED"
+      ? "import:completed"
+      : status === "FAILED" || status === "ERROR"
+        ? "import:error"
+        : "import:progress";
+
+  publish(`project:${projectId}`, {
+    type,
     data: { batchId, projectId, ...data },
-    projectId,
+    timestamp: Date.now(),
   });
 }
 
@@ -66,10 +100,10 @@ export function publishScreeningConflict(
   conflictId: string,
   projectWorkId: string
 ) {
-  eventBus.publish(`project:${projectId}`, {
+  publish(`project:${projectId}`, {
     type: "screening:conflict",
     data: { conflictId, projectWorkId, projectId },
-    projectId,
+    timestamp: Date.now(),
   });
 }
 
@@ -77,10 +111,10 @@ export function publishAIAnalysisComplete(
   projectId: string,
   projectWorkId: string
 ) {
-  eventBus.publish(`project:${projectId}`, {
-    type: "ai:analysis:complete",
+  publish(`project:${projectId}`, {
+    type: "ai:analysis:completed",
     data: { projectWorkId, projectId },
-    projectId,
+    timestamp: Date.now(),
   });
 }
 
@@ -93,18 +127,98 @@ export function publishNotification(
     message: string;
   }
 ) {
-  eventBus.publish(`user:${userId}`, {
+  publish(`user:${userId}`, {
     type: "notification:new",
     data: notification,
-    userId,
+    timestamp: Date.now(),
   });
 }
 
 export function publishProjectUpdate(projectId: string) {
-  eventBus.publish(`project:${projectId}`, {
+  publish(`project:${projectId}`, {
     type: "project:update",
     data: { projectId },
-    projectId,
+    timestamp: Date.now(),
   });
 }
 
+// ============== PRESENCE & COLLABORATION EVENTS ==============
+
+export function publishPresenceJoin(
+  projectId: string,
+  user: { id: string; name: string; avatar?: string }
+) {
+  publish(`project:${projectId}`, {
+    type: "presence:join",
+    data: { projectId, user },
+    timestamp: Date.now(),
+  });
+}
+
+export function publishPresenceLeave(
+  projectId: string,
+  userId: string
+) {
+  publish(`project:${projectId}`, {
+    type: "presence:leave",
+    data: { projectId, userId },
+    timestamp: Date.now(),
+  });
+}
+
+export function publishTypingIndicator(
+  projectId: string,
+  user: { id: string; name: string },
+  location: string // e.g., "screening", "writing", "chat"
+) {
+  publish(`project:${projectId}`, {
+    type: "presence:typing",
+    data: { projectId, user, location },
+    timestamp: Date.now(),
+  });
+}
+
+export function publishChatMessage(
+  projectId: string,
+  message: {
+    id: string;
+    userId: string;
+    userName: string;
+    content: string;
+    replyToId?: string;
+  }
+) {
+  publish(`project:${projectId}`, {
+    type: "chat:message",
+    data: { projectId, ...message },
+    timestamp: Date.now(),
+  });
+}
+
+export function publishScreeningUpdate(
+  projectId: string,
+  data: {
+    projectWorkId: string;
+    userId: string;
+    decision: string;
+    phase: string;
+  }
+) {
+  publish(`project:${projectId}`, {
+    type: "screening:update",
+    data: { projectId, ...data },
+    timestamp: Date.now(),
+  });
+}
+
+export function publishExtractionUpdate(
+  projectId: string,
+  projectWorkId: string,
+  userId: string
+) {
+  publish(`project:${projectId}`, {
+    type: "extraction:update",
+    data: { projectId, projectWorkId, userId },
+    timestamp: Date.now(),
+  });
+}

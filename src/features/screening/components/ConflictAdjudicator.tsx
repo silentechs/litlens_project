@@ -1,11 +1,11 @@
-"use client";
-
 import { useState } from "react";
-import { 
-  Check, 
-  X, 
-  AlertTriangle, 
-  User, 
+import { useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Check,
+  X,
+  AlertTriangle,
+  User,
   ArrowRight,
   MessageSquare,
   History,
@@ -16,37 +16,51 @@ import { cn } from "@/lib/utils";
 
 interface Conflict {
   id: string;
-  study: {
+  work: {
     title: string;
-    authors: string;
+    authors: { name: string }[];
     year: number;
-    abstract: string;
-  };
+    abstract?: string;
+  } | null;
   decisions: {
-    reviewer: string;
+    reviewerName: string | null;
+    reviewerId: string;
     decision: 'INCLUDE' | 'EXCLUDE' | 'MAYBE';
-    reasoning?: string;
+    reasoning: string | null;
   }[];
 }
 
-const MOCK_CONFLICTS: Conflict[] = [
-  {
-    id: "c1",
-    study: {
-      title: "Generative AI in Clinical Decision Support: A Critical Review",
-      authors: "Lee, S., et al.",
-      year: 2024,
-      abstract: "The rapid integration of generative AI into clinical environments necessitates a rigorous evaluation of evidence. This review synthesizes current literature on transformer-based models..."
-    },
-    decisions: [
-      { reviewer: "Zak A.", decision: 'INCLUDE', reasoning: "Explicitly mentions clinical decision support and transformers." },
-      { reviewer: "Mina S.", decision: 'EXCLUDE', reasoning: "Focuses on LLMs in general, not specifically the methodology we are reviewing." }
-    ]
-  }
-];
+interface ConflictsResponse {
+  items: Conflict[];
+  total: number;
+}
 
 export function ConflictAdjudicator() {
-  const [activeConflict, setActiveConflict] = useState<Conflict | null>(MOCK_CONFLICTS[0]);
+  const params = useParams();
+  const projectId = params.id as string;
+
+  const { data, isLoading } = useQuery<ConflictsResponse>({
+    queryKey: ["project-conflicts", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/conflicts?status=OPEN`);
+      if (!res.ok) throw new Error("Failed to fetch conflicts");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const conflicts = data?.items || [];
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const activeConflict = conflicts[currentIndex];
+
+  if (isLoading) {
+    return (
+      <div className="py-40 text-center space-y-4">
+        <History className="w-12 h-12 mx-auto text-muted animate-spin opacity-20" />
+        <p className="font-serif italic text-muted">Retrieving divergent assessments...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-12 pb-20">
@@ -70,11 +84,13 @@ export function ConflictAdjudicator() {
             <div className="bg-white border border-border p-8 space-y-6 sticky top-8">
               <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted border-b border-border pb-4">Study under Review</h3>
               <div className="space-y-4">
-                <h4 className="text-3xl font-serif leading-tight">{activeConflict.study.title}</h4>
-                <p className="font-serif italic text-muted text-sm">{activeConflict.study.authors} ({activeConflict.study.year})</p>
+                <h4 className="text-3xl font-serif leading-tight">{activeConflict.work?.title || "Untitled Study"}</h4>
+                <p className="font-serif italic text-muted text-sm">
+                  {activeConflict.work?.authors?.map(a => a.name).join(', ') || "Unknown Authors"} ({activeConflict.work?.year || "N/A"})
+                </p>
                 <div className="accent-line opacity-5" />
                 <p className="text-sm font-serif italic leading-relaxed text-muted line-clamp-[12]">
-                  {activeConflict.study.abstract}
+                  {activeConflict.work?.abstract || "No abstract available for this study."}
                 </p>
                 <button className="text-[10px] font-mono uppercase tracking-widest text-intel-blue hover:underline">View Full Abstract</button>
               </div>
@@ -84,23 +100,23 @@ export function ConflictAdjudicator() {
           {/* Adjudication Workspace */}
           <main className="col-span-12 md:col-span-8 space-y-12">
             <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Reviewer Discrepancies</h3>
-            
-            <div className="grid grid-cols-2 gap-px bg-border border border-border overflow-hidden">
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-border border border-border overflow-hidden">
               {activeConflict.decisions.map((d, i) => (
                 <div key={i} className="bg-white p-8 space-y-8">
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-paper border border-border flex items-center justify-center font-bold text-[10px]">
-                        {d.reviewer.split(' ').map(n => n[0]).join('')}
+                        {d.reviewerName ? d.reviewerName.split(' ').map(n => n[0]).join('') : "U"}
                       </div>
-                      <span className="font-serif font-bold italic">{d.reviewer}</span>
+                      <span className="font-serif font-bold italic">{d.reviewerName || "Unknown Reviewer"}</span>
                     </div>
                     <DecisionBadge decision={d.decision} />
                   </div>
-                  
+
                   <div className="space-y-4">
                     <label className="font-mono text-[10px] uppercase tracking-widest text-muted">Reasoning</label>
-                    <p className="font-serif italic text-lg leading-relaxed">"{d.reasoning}"</p>
+                    <p className="font-serif italic text-lg leading-relaxed">"{d.reasoning || "No reasoning provided."}"</p>
                   </div>
                 </div>
               ))}
@@ -111,29 +127,29 @@ export function ConflictAdjudicator() {
               <div className="absolute top-0 right-0 p-4 opacity-5">
                 <ShieldCheck className="w-32 h-32" />
               </div>
-              
+
               <div className="space-y-2">
                 <h3 className="text-3xl font-serif">Final Adjudication</h3>
                 <p className="text-paper/60 font-serif italic">Your decision will override the current discrepancy and advance the study.</p>
               </div>
 
-              <div className="grid grid-cols-3 gap-6 pt-4">
-                <FinalAction 
-                  label="Include" 
-                  icon={<Check className="w-5 h-5" />} 
-                  color="green" 
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-4">
+                <FinalAction
+                  label="Include"
+                  icon={<Check className="w-5 h-5" />}
+                  color="green"
                   onClick={() => console.log('Include')}
                 />
-                <FinalAction 
-                  label="Exclude" 
-                  icon={<X className="w-5 h-5" />} 
-                  color="red" 
+                <FinalAction
+                  label="Exclude"
+                  icon={<X className="w-5 h-5" />}
+                  color="red"
                   onClick={() => console.log('Exclude')}
                 />
-                <FinalAction 
-                  label="Needs Discussion" 
-                  icon={<MessageSquare className="w-5 h-5" />} 
-                  color="muted" 
+                <FinalAction
+                  label="Needs Discussion"
+                  icon={<MessageSquare className="w-5 h-5" />}
+                  color="muted"
                   onClick={() => console.log('Discuss')}
                 />
               </div>
@@ -143,7 +159,11 @@ export function ConflictAdjudicator() {
                   <AlertTriangle className="w-3 h-3" />
                   Decision will be logged in the permanent audit trail
                 </div>
-                <button className="text-paper/60 hover:text-paper font-serif italic text-sm flex items-center gap-2 transition-colors">
+                <button
+                  onClick={() => setCurrentIndex((prev) => (prev + 1) % conflicts.length)}
+                  className="text-paper/60 hover:text-paper font-serif italic text-sm flex items-center gap-2 transition-colors disabled:opacity-50"
+                  disabled={conflicts.length <= 1}
+                >
                   Next Conflict <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -154,7 +174,7 @@ export function ConflictAdjudicator() {
         <div className="py-40 text-center space-y-4">
           <Check className="w-12 h-12 mx-auto text-muted opacity-20" />
           <h2 className="text-3xl font-serif italic text-muted">All conflicts have been adjudicated.</h2>
-          <button className="btn-editorial">Return to Project Overview</button>
+          <button className="btn-editorial" onClick={() => window.history.back()}>Return to Project Overview</button>
         </div>
       )}
     </div>
@@ -185,7 +205,7 @@ function FinalAction({ label, icon, color, onClick }: { label: string, icon: Rea
   };
 
   return (
-    <button 
+    <button
       onClick={onClick}
       className={cn(
         "flex flex-col items-center justify-center p-8 border transition-all gap-4 bg-white/5",

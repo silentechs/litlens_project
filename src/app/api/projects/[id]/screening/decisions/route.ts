@@ -11,6 +11,7 @@ import {
   success,
 } from "@/lib/api";
 import { submitDecisionSchema, batchDecisionSchema } from "@/lib/validators";
+import { publishScreeningConflict } from "@/lib/events/publisher";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -274,7 +275,7 @@ async function updateProjectWorkStatus(
     });
 
     if (projectWork) {
-      await db.conflict.create({
+      const conflict = await db.conflict.create({
         data: {
           projectId: projectWork.projectId,
           projectWorkId,
@@ -292,6 +293,9 @@ async function updateProjectWorkStatus(
         where: { id: projectWorkId },
         data: { status: "CONFLICT" },
       });
+
+      // Realtime hint for all connected reviewers/leads on this project.
+      publishScreeningConflict(projectWork.projectId, conflict.id, projectWorkId);
     }
     return;
   }

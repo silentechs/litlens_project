@@ -45,6 +45,7 @@ model User {
   preferences           UserPreferences?
   extractionData        ExtractionData[]
   qualityAssessments    QualityAssessment[]
+  chatMessages          ChatMessage[]
 
   @@index([email])
 }
@@ -247,6 +248,7 @@ model Project {
   researchGraphs  ResearchGraph[]
   writingProjects WritingProject[]
   calibrationRounds CalibrationRound[]
+  chatMessages    ChatMessage[]
 
   @@index([organizationId])
   @@index([status])
@@ -1252,6 +1254,28 @@ enum NotificationType {
   DEADLINE_APPROACHING
   ALERT_DISCOVERY
   SYSTEM
+}
+
+// ============== PROJECT CHAT ==============
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  projectId   String
+  userId      String
+  
+  content     String   @db.Text
+  replyToId   String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  replyTo     ChatMessage? @relation("ChatReplies", fields: [replyToId], references: [id])
+  replies     ChatMessage[] @relation("ChatReplies")
+
+  @@index([projectId, createdAt])
+  @@index([userId])
 }
 
 // ============== BACKGROUND JOBS ==============

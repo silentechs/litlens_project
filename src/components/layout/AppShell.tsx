@@ -24,8 +24,10 @@ import {
   PanelLeftOpen
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { useSession, signOut } from "next-auth/react";
 import { useAppStore, type AppMode } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
+import { useSSE } from "@/hooks/use-sse";
 
 function NavItem({
   icon,
@@ -102,11 +104,23 @@ function IntelNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () =
 }
 
 function AvatarMenu() {
+  const { data: session } = useSession();
+  const user = session?.user;
+
+  // Get initials for avatar fallback
+  const initials = user?.name
+    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+    : user?.email?.substring(0, 2).toUpperCase() || "??";
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button className="w-8 h-8 rounded-full bg-paper border border-border flex items-center justify-center overflow-hidden hover:border-ink transition-colors outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
-          <div className="text-[10px] font-bold text-muted">ZA</div>
+          {user?.image ? (
+            <img src={user.image} alt={user.name || "User Avatar"} className="w-full h-full object-cover" />
+          ) : (
+            <div className="text-[10px] font-bold text-muted">{initials}</div>
+          )}
         </button>
       </DropdownMenu.Trigger>
 
@@ -117,8 +131,8 @@ function AvatarMenu() {
           align="end"
         >
           <div className="px-3 py-2 border-b border-border/50 mb-1">
-            <p className="text-xs font-bold font-mono uppercase tracking-widest text-ink">Zakaria A.</p>
-            <p className="text-[10px] text-muted font-serif italic">senior-investigator@litlens.ai</p>
+            <p className="text-xs font-bold font-mono uppercase tracking-widest text-ink">{user?.name || "Anonymous User"}</p>
+            <p className="text-[10px] text-muted font-serif italic">{user?.email || "No email provided"}</p>
           </div>
 
           <DropdownMenu.Item asChild className="group flex items-center px-3 py-2 text-sm text-muted hover:text-ink hover:bg-paper rounded-sm outline-none cursor-pointer transition-colors">
@@ -137,7 +151,10 @@ function AvatarMenu() {
 
           <DropdownMenu.Separator className="h-[1px] bg-border my-1" />
 
-          <DropdownMenu.Item className="group flex items-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-sm outline-none cursor-pointer transition-colors">
+          <DropdownMenu.Item
+            className="group flex items-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-sm outline-none cursor-pointer transition-colors"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+          >
             <LogOut className="w-4 h-4 mr-3 opacity-60 group-hover:opacity-100" />
             <span className="font-serif italic">Sign Out</span>
           </DropdownMenu.Item>
@@ -148,11 +165,14 @@ function AvatarMenu() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { mode, setMode, isSidebarOpen, toggleSidebar } = useAppStore();
+  const { mode, setMode, isSidebarOpen, toggleSidebar, currentProjectId } = useAppStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Global SSE connection (single EventSource for the whole app)
+  useSSE(currentProjectId || undefined);
 
   // Close mobile menu on route change
   useEffect(() => {

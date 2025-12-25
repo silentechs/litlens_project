@@ -1,13 +1,13 @@
-"use client";
-
-import { useState } from "react";
-import { 
-  Users, 
-  Mail, 
-  Shield, 
-  MoreHorizontal, 
-  Plus, 
-  UserPlus, 
+import { useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import {
+  Users,
+  Mail,
+  Shield,
+  MoreHorizontal,
+  Plus,
+  UserPlus,
   Search,
   Globe,
   Settings,
@@ -15,25 +15,48 @@ import {
   Activity,
   Check
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface TeamMember {
   id: string;
-  name: string;
-  email: string;
-  role: 'OWNER' | 'ADMIN' | 'REVIEWER' | 'OBSERVER';
-  status: 'ACTIVE' | 'PENDING';
-  lastActive: string;
-  orcid?: string;
+  userId: string;
+  role: 'OWNER' | 'LEAD' | 'REVIEWER' | 'OBSERVER';
+  joinedAt: string;
+  user: {
+    id: string;
+    name: string | null;
+    email: string;
+    image: string | null;
+    institution: string | null;
+  };
+  stats: {
+    total: number;
+    included: number;
+    excluded: number;
+    maybe: number;
+  };
 }
 
-const MOCK_TEAM: TeamMember[] = [
-  { id: "u1", name: "Zak A.", email: "zak@example.com", role: 'OWNER', status: 'ACTIVE', lastActive: "Just now", orcid: "0000-0002-1825-0097" },
-  { id: "u2", name: "Mina S.", email: "mina@university.edu", role: 'ADMIN', status: 'ACTIVE', lastActive: "2h ago" },
-  { id: "u3", name: "Alex L.", email: "alex.l@research.org", role: 'REVIEWER', status: 'PENDING', lastActive: "N/A" }
-];
+interface MembersResponse {
+  members: TeamMember[];
+  total: number;
+}
 
 export function TeamManager() {
+  const params = useParams();
+  const projectId = params.id as string;
+
+  const { data, isLoading } = useQuery<MembersResponse>({
+    queryKey: ["project-members", projectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/projects/${projectId}/members`);
+      if (!res.ok) throw new Error("Failed to fetch team members");
+      return res.json();
+    },
+    enabled: !!projectId,
+  });
+
+  const teamMembers = data?.members || [];
+
   return (
     <div className="space-y-12 pb-20">
       <header className="flex justify-between items-end">
@@ -53,7 +76,9 @@ export function TeamManager() {
         {/* Active Team */}
         <main className="col-span-12 md:col-span-8 space-y-8">
           <div className="flex justify-between items-center border-b border-border pb-4">
-            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Active Members ({MOCK_TEAM.length})</h3>
+            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">
+              {isLoading ? "Loading Scholars..." : `Active Members (${teamMembers.length})`}
+            </h3>
             <div className="relative group">
               <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 text-muted group-focus-within:text-ink transition-colors" />
               <input type="text" placeholder="Find member..." className="bg-transparent pl-6 py-1 outline-none text-xs font-serif italic placeholder:text-muted/40" />
@@ -61,9 +86,15 @@ export function TeamManager() {
           </div>
 
           <div className="space-y-4">
-            {MOCK_TEAM.map((member) => (
-              <MemberCard key={member.id} member={member} />
-            ))}
+            {isLoading ? (
+              <div className="p-12 text-center font-serif italic text-muted">Retrieving project roster...</div>
+            ) : teamMembers.length === 0 ? (
+              <div className="p-12 text-center font-serif italic text-muted">No members found in this collective.</div>
+            ) : (
+              teamMembers.map((member) => (
+                <MemberCard key={member.id} member={member} />
+              ))
+            )}
           </div>
         </main>
 
@@ -71,19 +102,19 @@ export function TeamManager() {
         <aside className="col-span-12 md:col-span-4 space-y-8">
           <div className="bg-white border border-border p-8 space-y-8">
             <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Governance Matrix</h3>
-            
+
             <div className="space-y-6">
-              <RoleDefinition 
-                role="Adjudicator" 
-                desc="Can resolve conflicts and override decisions. Access to full project settings." 
+              <RoleDefinition
+                role="Adjudicator"
+                desc="Can resolve conflicts and override decisions. Access to full project settings."
               />
-              <RoleDefinition 
-                role="Reviewer" 
-                desc="Blind title/abstract screening and full-text extraction." 
+              <RoleDefinition
+                role="Reviewer"
+                desc="Blind title/abstract screening and full-text extraction."
               />
-              <RoleDefinition 
-                role="Observer" 
-                desc="Read-only access to progress and analytics. Cannot make decisions." 
+              <RoleDefinition
+                role="Observer"
+                desc="Read-only access to progress and analytics. Cannot make decisions."
               />
             </div>
 
@@ -91,11 +122,17 @@ export function TeamManager() {
 
             <div className="space-y-4">
               <h4 className="text-xs font-mono uppercase tracking-widest text-muted flex items-center gap-2">
-                <Activity className="w-3 h-3" /> Recent Activity
+                <Activity className="w-3 h-3" /> Collective Output
               </h4>
               <div className="space-y-4">
-                <ActivityRow user="Mina S." action="resolved 12 conflicts" time="2h ago" />
-                <ActivityRow user="Zak A." action="added 1,248 studies" time="1d ago" />
+                {teamMembers.map(m => (
+                  <ActivityRow
+                    key={m.id}
+                    user={m.user.name || m.user.email}
+                    action={`screened ${m.stats.total} studies (${m.stats.included} included)`}
+                    time={formatDistanceToNow(new Date(m.joinedAt), { addSuffix: true })}
+                  />
+                ))}
               </div>
             </div>
           </div>
@@ -116,24 +153,29 @@ export function TeamManager() {
 }
 
 function MemberCard({ member }: { member: TeamMember }) {
+  const initial = member.user.name ? member.user.name[0].toUpperCase() : member.user.email[0].toUpperCase();
+
   return (
     <div className="group bg-white border border-border p-6 hover:border-ink transition-all flex items-center justify-between">
       <div className="flex items-center gap-6">
         <div className="relative">
-          <div className="w-12 h-12 rounded-full bg-paper border border-border flex items-center justify-center font-serif text-xl italic font-bold">
-            {member.name[0]}
+          <div className="w-12 h-12 rounded-full bg-paper border border-border flex items-center justify-center font-serif text-xl italic font-bold overflow-hidden">
+            {member.user.image ? (
+              <img src={member.user.image} alt={member.user.name || "Avatar"} className="w-full h-full object-cover" />
+            ) : (
+              <span>{initial}</span>
+            )}
           </div>
-          {member.status === 'ACTIVE' && <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-white rounded-full" />}
+          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-4 border-white rounded-full" />
         </div>
-        
+
         <div className="space-y-1">
           <div className="flex items-center gap-3">
-            <h4 className="text-2xl font-serif leading-none group-hover:underline cursor-pointer">{member.name}</h4>
-            {member.status === 'PENDING' && <span className="text-[8px] font-mono uppercase tracking-widest bg-paper px-2 py-0.5 rounded-full border border-border text-muted">Pending Invite</span>}
+            <h4 className="text-2xl font-serif leading-none group-hover:underline cursor-pointer">{member.user.name || "Anonymous Scholar"}</h4>
           </div>
           <div className="flex items-center gap-4 text-xs font-sans text-muted">
-            <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {member.email}</span>
-            {member.orcid && <span className="flex items-center gap-1 text-emerald-600 font-mono text-[10px] tracking-tighter"><Globe className="w-3 h-3" /> ORCID: {member.orcid}</span>}
+            <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {member.user.email}</span>
+            {member.user.institution && <span className="flex items-center gap-1 text-intel-blue font-mono text-[10px] tracking-tighter"><Globe className="w-3 h-3" /> {member.user.institution}</span>}
           </div>
         </div>
       </div>
@@ -144,9 +186,9 @@ function MemberCard({ member }: { member: TeamMember }) {
           <div className="font-serif italic font-bold text-lg">{member.role}</div>
         </div>
         <div className="h-8 w-[1px] bg-border" />
-        <div className="text-right w-24">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-muted mb-1">Active</div>
-          <div className="font-serif italic text-sm text-muted">{member.lastActive}</div>
+        <div className="text-right w-32">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted mb-1">Decisions</div>
+          <div className="font-serif italic text-sm text-muted">{member.stats.total} total</div>
         </div>
         <button className="p-2 hover:bg-paper rounded-full transition-colors">
           <MoreHorizontal className="w-5 h-5 text-muted hover:text-ink" />

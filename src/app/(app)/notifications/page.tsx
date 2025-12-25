@@ -4,37 +4,34 @@ import React from "react";
 import { Bell, CheckCircle2, AlertCircle, MessageSquare, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
-const MOCK_NOTIFICATIONS = [
-    {
-        id: "1",
-        type: "conflict",
-        title: "Conflict Detected",
-        description: "Reviewer Mina S. disagreed with your inclusion of 'Lee et al. (2024)'.",
-        time: "2 hours ago",
-        unread: true,
-        icon: <AlertCircle className="w-5 h-5 text-red-500" />
-    },
-    {
-        id: "2",
-        type: "system",
-        title: "Import Complete",
-        description: "342 records successfully imported from 'PubMed_Export.ris'.",
-        time: "5 hours ago",
-        unread: false,
-        icon: <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-    },
-    {
-        id: "3",
-        type: "mention",
-        title: "New Comment",
-        description: "Zakaria A. mentioned you in a comment on 'Methodology Section'.",
-        time: "1 day ago",
-        unread: false,
-        icon: <MessageSquare className="w-5 h-5 text-intel-blue" />
-    }
-];
+import { useQuery } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+
+interface NotificationAPIResponse {
+    items: Array<{
+        id: string;
+        type: string;
+        title: string;
+        message: string;
+        metadata: any;
+        user: { name: string; image?: string };
+        createdAt: string;
+    }>;
+    total: number;
+}
 
 export default function NotificationsPage() {
+    const { data, isLoading } = useQuery<NotificationAPIResponse>({
+        queryKey: ["notifications"],
+        queryFn: async () => {
+            const res = await fetch("/api/notifications");
+            if (!res.ok) throw new Error("Failed to fetch notifications");
+            return res.json();
+        },
+    });
+
+    const notifications = data?.items || [];
+
     return (
         <div className="space-y-12 pb-20">
             <header className="space-y-4">
@@ -45,27 +42,38 @@ export default function NotificationsPage() {
             <div className="accent-line" />
 
             <div className="max-w-3xl space-y-4">
-                {MOCK_NOTIFICATIONS.map((n, i) => (
-                    <motion.div
-                        key={n.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.1 }}
-                        className={`p-6 border ${n.unread ? 'bg-white border-ink shadow-sm' : 'bg-paper/50 border-border/50'} flex gap-6 group transition-all`}
-                    >
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${n.unread ? 'bg-ink/5' : 'bg-paper border border-border'}`}>
-                            {n.icon}
-                        </div>
-                        <div className="flex-1 space-y-1">
-                            <div className="flex justify-between items-start">
-                                <h3 className={`font-serif text-lg ${n.unread ? 'font-bold' : ''}`}>{n.title}</h3>
-                                <span className="text-[10px] font-mono text-muted uppercase tracking-widest">{n.time}</span>
+                {isLoading ? (
+                    <div className="p-12 text-center font-serif italic text-muted">Scanning for alerts...</div>
+                ) : notifications.length === 0 ? (
+                    <div className="p-12 bg-white border border-border/50 text-center space-y-4">
+                        <Bell className="w-8 h-8 text-muted mx-auto opacity-20" />
+                        <p className="font-serif italic text-xl text-muted">Your inbox is clear.</p>
+                        <p className="text-sm text-muted/60 font-serif">You have no methodological alerts or team mentions at this time.</p>
+                    </div>
+                ) : (
+                    notifications.map((n, i) => (
+                        <motion.div
+                            key={n.id}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.1 }}
+                            className={`p-6 border bg-white border-ink shadow-sm flex gap-6 group transition-all`}
+                        >
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 bg-ink/5`}>
+                                {getNotificationIcon(n.type)}
                             </div>
-                            <p className="text-sm text-muted font-serif italic leading-relaxed">{n.description}</p>
-                        </div>
-                        {n.unread && <div className="w-2 h-2 rounded-full bg-ink mt-2" />}
-                    </motion.div>
-                ))}
+                            <div className="flex-1 space-y-1">
+                                <div className="flex justify-between items-start">
+                                    <h3 className={`font-serif text-lg font-bold`}>{n.title}</h3>
+                                    <span className="text-[10px] font-mono text-muted uppercase tracking-widest">
+                                        {formatDistanceToNow(new Date(n.createdAt), { addSuffix: true })}
+                                    </span>
+                                </div>
+                                <p className="text-sm text-muted font-serif italic leading-relaxed">{n.message}</p>
+                            </div>
+                        </motion.div>
+                    ))
+                )}
             </div>
 
             <div className="pt-12">
@@ -76,3 +84,18 @@ export default function NotificationsPage() {
         </div>
     );
 }
+
+function getNotificationIcon(type: string) {
+    switch (type) {
+        case "CONFLICT_CREATED":
+            return <AlertCircle className="w-5 h-5 text-red-500" />;
+        case "STUDY_IMPORTED":
+            return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
+        case "MEMBER_ADDED":
+            return <UserPlus className="w-5 h-5 text-intel-blue" />;
+        default:
+            return <Bell className="w-5 h-5 text-intel-blue" />;
+    }
+}
+
+import { UserPlus } from "lucide-react";

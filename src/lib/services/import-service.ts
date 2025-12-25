@@ -214,7 +214,7 @@ export async function processImport(
   });
 
   publishImportProgress(projectId, batchId, {
-    status: "COMPLETED",
+    status: finalStatus,
     totalRecords: records.length,
     processedRecords: processedCount,
     duplicatesFound: duplicatesCount,

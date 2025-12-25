@@ -2,7 +2,14 @@
 
 import { Settings as SettingsIcon, Bell, Shield, User, Globe } from "lucide-react";
 
+import { useSession } from "next-auth/react";
+
 export default function SettingsPage() {
+  const { data: session } = useSession();
+  const user = session?.user;
+
+  const initial = user?.name ? user.name[0].toUpperCase() : (user?.email ? user.email[0].toUpperCase() : "?");
+
   return (
     <div className="space-y-12 pb-20">
       <header className="space-y-4">
@@ -19,10 +26,16 @@ export default function SettingsPage() {
             <div className="bg-white border border-border p-8 space-y-6">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-paper border border-border flex items-center justify-center font-serif text-xl italic font-bold">Z</div>
+                  <div className="w-12 h-12 rounded-full bg-paper border border-border flex items-center justify-center font-serif text-xl italic font-bold overflow-hidden">
+                    {user?.image ? (
+                      <img src={user.image} alt={user.name || "User Avatar"} className="w-full h-full object-cover" />
+                    ) : (
+                      <span>{initial}</span>
+                    )}
+                  </div>
                   <div>
-                    <h4 className="font-serif font-bold italic text-lg">Zak A.</h4>
-                    <p className="text-sm text-muted">zak@example.com</p>
+                    <h4 className="font-serif font-bold italic text-lg">{user?.name || "Anonymous User"}</h4>
+                    <p className="text-sm text-muted">{user?.email || "No email provided"}</p>
                   </div>
                 </div>
                 <button className="text-xs font-mono uppercase tracking-widest text-intel-blue hover:underline">Edit Profile</button>

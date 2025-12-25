@@ -9,8 +9,8 @@ import {
   success,
   created,
 } from "@/lib/api";
-import { 
-  createAssessmentTool, 
+import {
+  createAssessmentTool,
   getProjectTools,
   ROB2_TEMPLATE,
   ROBINS_I_TEMPLATE,
@@ -137,26 +137,4 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// GET /api/projects/[id]/quality/tools/templates - Get standard tool templates
-export { GET as GETTemplates };
-
-export async function GETTemplates_handler(request: NextRequest) {
-  return success({
-    ROB2: {
-      name: "Risk of Bias 2.0",
-      description: "For randomized controlled trials",
-      domains: ROB2_TEMPLATE,
-    },
-    ROBINS_I: {
-      name: "ROBINS-I",
-      description: "For non-randomized studies of interventions",
-      domains: ROBINS_I_TEMPLATE,
-    },
-    NEWCASTLE_OTTAWA: {
-      name: "Newcastle-Ottawa Scale",
-      description: "For cohort studies",
-      domains: NEWCASTLE_OTTAWA_COHORT_TEMPLATE,
-    },
-  });
-}
 

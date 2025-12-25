@@ -1,16 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  Bell, 
-  Mail, 
-  Settings, 
-  Plus, 
-  Search, 
-  Clock, 
-  Trash2, 
-  Edit2, 
-  Check, 
+import {
+  Bell,
+  Mail,
+  Settings,
+  Plus,
+  Search,
+  Clock,
+  Trash2,
+  Edit2,
+  Check,
   AlertCircle,
   TrendingUp,
   FileText,
@@ -50,8 +50,19 @@ const MOCK_ALERTS: ResearchAlert[] = [
   }
 ];
 
+import { useQuery } from "@tanstack/react-query";
+
 export function ResearchAlerts() {
-  const [alerts, setAlerts] = useState<ResearchAlert[]>(MOCK_ALERTS);
+  const { data: alertsData, isLoading } = useQuery<any[]>({
+    queryKey: ["research-alerts"],
+    queryFn: async () => {
+      const res = await fetch("/api/research/alerts");
+      if (!res.ok) throw new Error("Failed to fetch alerts");
+      return res.json();
+    },
+  });
+
+  const alerts = alertsData || [];
 
   return (
     <div className="space-y-12 pb-20">
@@ -72,16 +83,37 @@ export function ResearchAlerts() {
         {/* Alerts List */}
         <main className="col-span-12 md:col-span-8 space-y-8">
           <div className="flex justify-between items-center border-b border-border pb-4">
-            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Active Surveillance ({alerts.length})</h3>
+            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">
+              {isLoading ? "Synchronizing High-Frequency Feeds..." : `Active Surveillance (${alerts.length})`}
+            </h3>
             <div className="flex gap-4">
               <button className="text-[10px] font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors">Mark All Seen</button>
             </div>
           </div>
 
           <div className="space-y-6">
-            {alerts.map((alert) => (
-              <AlertCard key={alert.id} alert={alert} />
-            ))}
+            {isLoading ? (
+              <div className="p-12 text-center font-serif italic text-muted">Awaiting signal from scholarly repositories...</div>
+            ) : alerts.length === 0 ? (
+              <div className="p-20 text-center space-y-4 bg-white border border-border/50">
+                <Bell className="w-12 h-12 mx-auto text-muted opacity-20" />
+                <p className="font-serif italic text-2xl text-muted">No active surveillance filters found.</p>
+                <p className="text-sm text-muted/60 font-serif max-w-sm mx-auto">Configure custom alerts to automatically scour the deep web for relevant evidence in your field.</p>
+                <button className="btn-editorial mt-4">Initialize First Alert</button>
+              </div>
+            ) : (
+              alerts.map((alert: any) => (
+                <AlertCard key={alert.id} alert={{
+                  ...alert,
+                  type: alert.alertType === "KEYWORD_TREND" ? "KEYWORDS" :
+                    alert.alertType === "AUTHOR_ACTIVITY" ? "AUTHOR" :
+                      alert.alertType === "CITATION_UPDATE" ? "CITATION" : "PROJECT",
+                  query: alert.searchQuery || alert.keywords.join(", ") || "Custom filter active",
+                  lastTriggered: "Recently",
+                  discoveriesCount: 0
+                }} />
+              ))
+            )}
           </div>
         </main>
 
@@ -156,7 +188,7 @@ function AlertCard({ alert }: { alert: ResearchAlert }) {
           {alert.discoveriesCount} New Discoveries
         </div>
       )}
-      
+
       <div className="space-y-6 flex-1">
         <div className="space-y-2">
           <div className="flex items-center gap-3">

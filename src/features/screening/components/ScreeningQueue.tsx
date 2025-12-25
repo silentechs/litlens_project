@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useScreeningStore } from "@/stores/screening-store";
 import { useScreeningQueue, useSubmitDecision } from "@/features/screening/api/queries";
 import { useAppStore } from "@/stores/app-store";
-import { useSSE } from "@/hooks/use-sse";
 import type { ScreeningDecision, ScreeningQueueItem } from "@/types/screening";
 import {
   Check,
@@ -50,9 +49,6 @@ export function ScreeningQueue() {
     phase: currentPhase,
     limit: 100,
   });
-
-  // SSE for real-time updates
-  useSSE(currentProjectId || undefined);
 
   // Submit decision mutation
   const submitDecision = useSubmitDecision(currentProjectId || "");
