@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 export type AppMode = 'OPERATIONS' | 'INTELLIGENCE';
 
@@ -16,6 +16,10 @@ interface AppState {
   // Search state
   globalSearchQuery: string;
   isSearchOpen: boolean;
+  
+  // Hydration state
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
   
   // Actions
   setMode: (mode: AppMode) => void;
@@ -35,6 +39,9 @@ export const useAppStore = create<AppState>()(
       currentProjectId: null, // No default - will be set by user
       globalSearchQuery: '',
       isSearchOpen: false,
+      _hasHydrated: false,
+      
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
 
       setMode: (mode) => set({ mode }),
       
@@ -56,11 +63,15 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'litlens-app-state',
+      storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         mode: state.mode,
         isSidebarOpen: state.isSidebarOpen,
-        currentProjectId: state.currentProjectId,
+        // Don't persist currentProjectId - it should come from URL
       }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
     }
   )
 );

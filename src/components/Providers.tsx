@@ -3,10 +3,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { SessionProvider } from "next-auth/react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Toaster } from "sonner";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false);
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -26,22 +27,29 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       })
   );
 
+  // Prevent hydration mismatch with persisted stores
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
         {children}
-        <Toaster 
-          position="bottom-right"
-          toastOptions={{
-            className: "font-serif",
-            style: {
-              background: "#FAFAF5",
-              border: "1px solid #E5E4DF",
-              color: "#1C1C1A",
-            },
-          }}
-        />
-        {process.env.NODE_ENV === "development" && (
+        {mounted && (
+          <Toaster 
+            position="bottom-right"
+            toastOptions={{
+              className: "font-serif",
+              style: {
+                background: "#FAFAF5",
+                border: "1px solid #E5E4DF",
+                color: "#1C1C1A",
+              },
+            }}
+          />
+        )}
+        {process.env.NODE_ENV === "development" && mounted && (
           <ReactQueryDevtools initialIsOpen={false} />
         )}
       </QueryClientProvider>

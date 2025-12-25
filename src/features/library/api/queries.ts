@@ -40,8 +40,8 @@ async function fetchLibraryItems(
   return data.data;
 }
 
-async function fetchLibraryItem(id: string): Promise<LibraryItemWithWork> {
-  const response = await fetch(`/api/library/${id}`, {
+async function fetchLibraryItem(itemId: string): Promise<LibraryItemWithWork> {
+  const response = await fetch(`/api/library/${itemId}`, {
     credentials: 'include',
   });
   if (!response.ok) {
@@ -71,10 +71,10 @@ async function addToLibrary(input: AddToLibraryInput): Promise<LibraryItemWithWo
 }
 
 async function updateLibraryItem(
-  id: string,
+  itemId: string,
   input: UpdateLibraryItemInput
 ): Promise<LibraryItemWithWork> {
-  const response = await fetch(`/api/library/${id}`, {
+  const response = await fetch(`/api/library/${itemId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -90,8 +90,8 @@ async function updateLibraryItem(
   return data.data;
 }
 
-async function removeFromLibrary(id: string): Promise<void> {
-  const response = await fetch(`/api/library/${id}`, {
+async function removeFromLibrary(itemId: string): Promise<void> {
+  const response = await fetch(`/api/library/${itemId}`, {
     method: "DELETE",
     credentials: 'include',
   });

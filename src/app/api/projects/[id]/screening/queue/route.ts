@@ -84,12 +84,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     const filters = screeningQueueFiltersSchema.parse({
       phase: searchParams.get("phase") || "TITLE_ABSTRACT",
-      status: searchParams.get("status"),
-      search: searchParams.get("search"),
+      status: searchParams.get("status") || undefined,
+      search: searchParams.get("search") || undefined,
       hasAiSuggestion: searchParams.get("hasAiSuggestion") === "true" ? true : undefined,
-      aiSuggestion: searchParams.get("aiSuggestion"),
-      sortBy: searchParams.get("sortBy"),
-      sortOrder: searchParams.get("sortOrder"),
+      aiSuggestion: searchParams.get("aiSuggestion") || undefined,
+      sortBy: searchParams.get("sortBy") || undefined,
+      sortOrder: searchParams.get("sortOrder") || undefined,
     });
 
     // Build where clause
