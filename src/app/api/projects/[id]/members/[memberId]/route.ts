@@ -16,9 +16,9 @@ interface RouteParams {
   params: Promise<{ id: string; memberId: string }>;
 }
 
-// Schema for updating a member
+// Schema for updating a member - uses ProjectRole enum values
 const updateMemberSchema = z.object({
-  role: z.enum(["OWNER", "LEAD", "REVIEWER", "VIEWER"]),
+  role: z.enum(["OWNER", "LEAD", "REVIEWER", "OBSERVER"]),
 });
 
 // GET /api/projects/[id]/members/[memberId] - Get a specific member
@@ -65,9 +65,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get member's screening stats
-    const stats = await db.screeningDecision.aggregate({
+    const stats = await db.screeningDecisionRecord.aggregate({
       where: {
-        userId: member.userId,
+        reviewerId: member.userId,
         projectWork: {
           projectId,
         },
@@ -78,10 +78,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       },
     });
 
-    const decisionBreakdown = await db.screeningDecision.groupBy({
+    const decisionBreakdown = await db.screeningDecisionRecord.groupBy({
       by: ["decision"],
       where: {
-        userId: member.userId,
+        reviewerId: member.userId,
         projectWork: {
           projectId,
         },
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         totalDecisions: stats._count,
         avgTimePerDecision: stats._avg.timeSpentMs,
         breakdown: Object.fromEntries(
-          decisionBreakdown.map((d) => [d.decision.toLowerCase(), d._count])
+          decisionBreakdown.map((d: { decision: string; _count: number }) => [d.decision.toLowerCase(), d._count])
         ),
       },
     });
@@ -197,7 +197,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       data: {
         userId: session.user.id,
         projectId,
-        type: "MEMBER_UPDATED",
+        type: "SETTINGS_UPDATED",
         description: `Changed ${memberToUpdate.user.name || memberToUpdate.user.email}'s role from ${memberToUpdate.role} to ${role}`,
         metadata: {
           memberId,
@@ -296,7 +296,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       data: {
         userId: session.user.id,
         projectId,
-        type: isSelf ? "MEMBER_LEFT" : "MEMBER_REMOVED",
+        type: "TEAM_MEMBER_REMOVED",
         description: isSelf
           ? `Left the project`
           : `Removed ${memberToRemove.user.name || memberToRemove.user.email} from the project`,

@@ -42,14 +42,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const batch = await db.importBatch.findUnique({
       where: { id: batchId },
       include: {
-        uploadedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
-          },
-        },
         _count: {
           select: {
             projectWorks: true,
@@ -74,7 +66,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       duplicatesFound: batch.duplicatesFound,
       errorsCount: batch.errorsCount,
       errorLog: batch.errorLog,
-      uploadedBy: batch.uploadedBy,
       worksCreated: batch._count.projectWorks,
       createdAt: batch.createdAt.toISOString(),
       startedAt: batch.startedAt?.toISOString() || null,
@@ -135,14 +126,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       });
     });
 
-    // Log activity
+    // Log activity - using PROJECT_UPDATED since there's no IMPORT_DELETED type
     await db.activity.create({
       data: {
         userId: session.user.id,
         projectId,
-        type: "IMPORT_DELETED",
+        type: "PROJECT_UPDATED",
         description: `Deleted import batch "${batch.filename}"`,
         metadata: {
+          action: "import_deleted",
           batchId,
           filename: batch.filename,
           recordsDeleted: batch.processedRecords,

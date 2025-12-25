@@ -1,8 +1,10 @@
 {
-  "/(app)/project/[id]/team/page": "app/(app)/project/[id]/team/page.js",
-  "/(app)/graphs/page": "app/(app)/graphs/page.js",
-  "/(app)/project/[id]/analytics/page": "app/(app)/project/[id]/analytics/page.js",
-  "/(app)/settings/page": "app/(app)/settings/page.js",
+  "/api/library/folders/route": "app/api/library/folders/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/library/route": "app/api/library/route.js",
+  "/(app)/project/[id]/import/page": "app/(app)/project/[id]/import/page.js",
+  "/(app)/writing/page": "app/(app)/writing/page.js",
+  "/(app)/library/page": "app/(app)/library/page.js",
   "/(app)/dashboard/page": "app/(app)/dashboard/page.js",
-  "/(app)/project/[id]/import/page": "app/(app)/project/[id]/import/page.js"
+  "/(app)/settings/page": "app/(app)/settings/page.js"
 }

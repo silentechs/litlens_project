@@ -51,7 +51,13 @@ export async function checkDuplicate(
         workId: doiMatch.id,
         matchType: 'doi',
         confidence: 1.0,
-        matchedWork: doiMatch,
+        matchedWork: {
+          id: doiMatch.id,
+          title: doiMatch.title,
+          doi: doiMatch.doi,
+          authors: doiMatch.authors as { name: string }[] | null,
+          year: doiMatch.year,
+        },
       });
     }
   }
@@ -64,7 +70,13 @@ export async function checkDuplicate(
         workId: pmidMatch.id,
         matchType: 'pmid',
         confidence: 1.0,
-        matchedWork: pmidMatch,
+        matchedWork: {
+          id: pmidMatch.id,
+          title: pmidMatch.title,
+          doi: null,
+          authors: pmidMatch.authors as { name: string }[] | null,
+          year: pmidMatch.year,
+        },
       });
     }
   }

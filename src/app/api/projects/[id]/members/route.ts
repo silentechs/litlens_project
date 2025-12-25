@@ -17,15 +17,15 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-// Schema for adding a member
+// Schema for adding a member - uses ProjectRole enum values
 const addMemberSchema = z.object({
   email: z.string().email("Invalid email address"),
-  role: z.enum(["REVIEWER", "LEAD", "VIEWER"]).default("REVIEWER"),
+  role: z.enum(["REVIEWER", "LEAD", "OBSERVER"]).default("REVIEWER"),
 });
 
 // Schema for updating a member
 const updateMemberSchema = z.object({
-  role: z.enum(["OWNER", "LEAD", "REVIEWER", "VIEWER"]),
+  role: z.enum(["OWNER", "LEAD", "REVIEWER", "OBSERVER"]),
 });
 
 // GET /api/projects/[id]/members - List all project members
@@ -75,10 +75,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Add statistics for each member
     const membersWithStats = await Promise.all(
       project.members.map(async (member) => {
-        const stats = await db.screeningDecision.groupBy({
+        const stats = await db.screeningDecisionRecord.groupBy({
           by: ["decision"],
           where: {
-            userId: member.userId,
+            reviewerId: member.userId,
             projectWork: {
               projectId,
             },
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           maybe: 0,
         };
 
-        stats.forEach((s) => {
+        stats.forEach((s: { decision: string; _count: number }) => {
           decisionCounts.total += s._count;
           if (s.decision === "INCLUDE") decisionCounts.included = s._count;
           else if (s.decision === "EXCLUDE") decisionCounts.excluded = s._count;
@@ -198,7 +198,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       data: {
         userId: session.user.id,
         projectId,
-        type: "MEMBER_ADDED",
+        type: "TEAM_MEMBER_ADDED",
         description: `Added ${userToAdd.name || userToAdd.email} to the project as ${role}`,
         metadata: { 
           addedUserId: userToAdd.id,
@@ -236,7 +236,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const bulkUpdateSchema = z.object({
       updates: z.array(z.object({
         userId: z.string().cuid(),
-        role: z.enum(["OWNER", "LEAD", "REVIEWER", "VIEWER"]),
+        role: z.enum(["OWNER", "LEAD", "REVIEWER", "OBSERVER"]),
       })),
     });
     
@@ -303,7 +303,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       data: {
         userId: session.user.id,
         projectId,
-        type: "MEMBER_UPDATED",
+        type: "SETTINGS_UPDATED",
         description: `Updated roles for ${updates.length} member(s)`,
         metadata: { updates },
       },

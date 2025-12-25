@@ -10,13 +10,35 @@ import {
   created, 
   paginated,
   buildPaginationArgs,
-  buildOrderBy,
 } from "@/lib/api";
 import { 
   addToLibrarySchema, 
   libraryFiltersSchema, 
   paginationSchema 
 } from "@/lib/validators";
+import { Prisma } from "@prisma/client";
+
+// Build orderBy for library items - handles related Work fields
+function buildLibraryOrderBy(
+  sortBy: string | undefined,
+  sortOrder: "asc" | "desc" = "desc"
+): Prisma.LibraryItemOrderByWithRelationInput {
+  const order = sortOrder;
+  
+  switch (sortBy) {
+    case "title":
+      return { work: { title: order } };
+    case "year":
+      return { work: { year: order } };
+    case "rating":
+      return { rating: { sort: order, nulls: "last" } };
+    case "lastAccessed":
+      return { lastAccessedAt: { sort: order, nulls: "last" } };
+    case "addedAt":
+    default:
+      return { createdAt: order };
+  }
+}
 
 // GET /api/library - Get user's library items
 export async function GET(request: NextRequest) {
@@ -86,11 +108,7 @@ export async function GET(request: NextRequest) {
     const items = await db.libraryItem.findMany({
       where,
       ...buildPaginationArgs(pagination.page, pagination.limit),
-      orderBy: buildOrderBy(
-        pagination.sortBy === "addedAt" ? "createdAt" : pagination.sortBy,
-        pagination.sortOrder,
-        "createdAt"
-      ),
+      orderBy: buildLibraryOrderBy(pagination.sortBy, pagination.sortOrder),
       include: {
         work: {
           select: {

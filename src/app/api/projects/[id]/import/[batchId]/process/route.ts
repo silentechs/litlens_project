@@ -63,10 +63,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       throw new ValidationError("Missing file content");
     }
 
-    // Update batch to track who started the import
+    // Update batch status to indicate processing is starting
     await db.importBatch.update({
       where: { id: batchId },
-      data: { uploadedById: session.user.id },
+      data: { status: "UPLOADING" },
     });
 
     // Process the import

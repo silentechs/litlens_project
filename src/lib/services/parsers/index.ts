@@ -8,7 +8,7 @@ import { parseRIS, ParsedWork } from './ris-parser';
 import { parseBibTeX } from './bibtex-parser';
 import { parseCSV, autoDetectAndParseCSV } from './csv-parser';
 
-export { ParsedWork } from './ris-parser';
+export type { ParsedWork } from './ris-parser';
 export { parseRIS } from './ris-parser';
 export { parseBibTeX } from './bibtex-parser';
 export { parseCSV, autoDetectAndParseCSV } from './csv-parser';

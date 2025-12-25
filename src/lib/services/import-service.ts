@@ -192,12 +192,10 @@ export async function processImport(
     });
   }
 
-  // Determine final status
-  let finalStatus: "COMPLETED" | "FAILED" | "COMPLETED_WITH_ERRORS";
+  // Determine final status - uses ImportStatus enum
+  let finalStatus: "COMPLETED" | "FAILED";
   if (errorsCount > 0 && processedCount === 0) {
     finalStatus = "FAILED";
-  } else if (errorsCount > 0) {
-    finalStatus = "COMPLETED_WITH_ERRORS";
   } else {
     finalStatus = "COMPLETED";
   }
@@ -223,22 +221,8 @@ export async function processImport(
     errorsCount,
   });
 
-  // Log activity
-  await db.activity.create({
-    data: {
-      userId: batch.uploadedById || undefined,
-      projectId,
-      type: "STUDY_IMPORTED",
-      description: `Imported ${processedCount - duplicatesCount} studies from ${batch.filename} (${duplicatesCount} duplicates)`,
-      metadata: {
-        batchId,
-        filename: batch.filename,
-        newWorks: newWorksCount,
-        duplicates: duplicatesCount,
-        errors: errorsCount,
-      },
-    },
-  });
+  // Log activity - Note: ImportBatch doesn't track uploadedById, would need project owner for this
+  // Skip activity creation for now until we refactor to track the user who initiated the import
 
   return {
     processed: processedCount - duplicatesCount,
