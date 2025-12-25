@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: var(--font-serif), "Baskerville", serif;
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-mono: var(--font-mono), monospace;
+
+  /* "Ivy League" Palette (Deep Green & Cream) */
+  --color-ink: #1a3320;         /* Deep Hunter Green */
+  --color-paper: #f5f5f0;       /* Cream / Eggshell */
+  --color-intel-blue: #c2b280;  /* Bronze / Gold Accent */
+  --color-muted: #6b705c;       /* Muted Olive */
+  --color-border: #dcdcc6;      /* Muted Parchment */
+
+  --radius-none: 0;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+
+  --shadow-editorial: 0 4px 30px rgba(26, 51, 32, 0.08);
+}
+
+@layer base {
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif tracking-tight;
+  }
+
+  /* Editorial Grid System */
+  .editorial-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 1.5rem;
+  }
+
+  .grid-aside {
+    grid-column: span 3;
+  }
+
+  .grid-main {
+    grid-column: span 9;
+  }
+}
+
+@layer components {
+  .btn-editorial {
+    @apply px-6 py-2 border border-ink text-ink font-serif italic hover:bg-ink hover:text-paper transition-all duration-500 shadow-sm hover:shadow-editorial;
+  }
+
+  .accent-line {
+    @apply h-[1px] bg-ink w-full opacity-10;
+  }
+
+  /* Intelligence Mode subtle glow */
+  .intel-gradient {
+    background: radial-gradient(circle at top right, rgba(194, 178, 128, 0.05), transparent 40%);
+  }
+}

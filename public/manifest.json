@@ -1,0 +1,21 @@
+{
+    "name": "LitLens",
+    "short_name": "LitLens",
+    "description": "A distinctive, AI-powered platform for systematic reviews and research intelligence.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#f5f5f0",
+    "theme_color": "#1a3320",
+    "icons": [
+        {
+            "src": "/icons/icon-192x192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/icons/icon-512x512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ]
+}

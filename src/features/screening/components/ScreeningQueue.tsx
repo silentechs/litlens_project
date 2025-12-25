@@ -1,0 +1,514 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useScreeningStore } from "@/stores/screening-store";
+import { useScreeningQueue, useSubmitDecision } from "@/features/screening/api/queries";
+import { useAppStore } from "@/stores/app-store";
+import { useSSE } from "@/hooks/use-sse";
+import type { ScreeningDecision, ScreeningQueueItem } from "@/types/screening";
+import {
+  Check,
+  X,
+  HelpCircle,
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+  Keyboard,
+  History,
+  Info,
+  Sparkles,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
+
+export function ScreeningQueue() {
+  const { currentProjectId } = useAppStore();
+  const { 
+    currentIndex, 
+    isFocusMode: isFocused, 
+    currentPhase,
+    next, 
+    previous, 
+    toggleFocusMode,
+    setCurrentIndex,
+    startDecisionTimer,
+    getDecisionTime,
+  } = useScreeningStore();
+
+  // Fetch screening queue from API
+  const { 
+    data, 
+    isLoading, 
+    isError, 
+    error,
+    refetch 
+  } = useScreeningQueue(currentProjectId || undefined, {
+    phase: currentPhase,
+    limit: 100,
+  });
+
+  // SSE for real-time updates
+  useSSE(currentProjectId || undefined);
+
+  // Submit decision mutation
+  const submitDecision = useSubmitDecision(currentProjectId || "");
+
+  const studies = data?.items || [];
+  const currentStudy = studies[currentIndex] as ScreeningQueueItem | undefined;
+  const totalStudies = studies.length;
+
+  // Start timer when study changes
+  useEffect(() => {
+    if (currentStudy) {
+      startDecisionTimer();
+    }
+  }, [currentStudy?.id, startDecisionTimer]);
+
+  // Handle decision
+  const handleDecision = useCallback((decision: ScreeningDecision) => {
+    if (!currentStudy || !currentProjectId) return;
+
+    const timeSpentMs = getDecisionTime();
+
+    submitDecision.mutate(
+      {
+        projectWorkId: currentStudy.id,
+        phase: currentPhase,
+        decision,
+        timeSpentMs: timeSpentMs || undefined,
+        followedAi: currentStudy.aiSuggestion ? decision === currentStudy.aiSuggestion : undefined,
+      },
+      {
+        onSuccess: () => {
+          // Move to next after successful decision
+          if (currentIndex < totalStudies - 1) {
+            next();
+          }
+        },
+      }
+    );
+  }, [currentStudy, currentProjectId, currentPhase, submitDecision, currentIndex, totalStudies, next, getDecisionTime]);
+
+  // Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      const key = e.key.toLowerCase();
+      if (!currentStudy) return;
+
+      const actions: Record<string, () => void> = {
+        'i': () => handleDecision('INCLUDE'),
+        'e': () => handleDecision('EXCLUDE'),
+        'm': () => handleDecision('MAYBE'),
+        'n': next,
+        'arrowright': next,
+        'p': previous,
+        'arrowleft': previous,
+        'f': toggleFocusMode,
+      };
+
+      if (actions[key]) {
+        e.preventDefault();
+        actions[key]();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentStudy, handleDecision, next, previous, toggleFocusMode]);
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="py-40 text-center space-y-8">
+        <Loader2 className="w-12 h-12 animate-spin mx-auto text-muted" />
+        <p className="text-muted font-serif italic text-xl">Loading screening queue...</p>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError) {
+    return (
+      <div className="py-40 text-center space-y-8">
+        <AlertCircle className="w-12 h-12 mx-auto text-rose-500" />
+        <div className="space-y-3">
+          <h2 className="text-3xl font-serif text-ink">Unable to load queue</h2>
+          <p className="text-muted font-serif italic text-lg max-w-md mx-auto">
+            {error instanceof Error ? error.message : "An error occurred"}
+          </p>
+        </div>
+        <button 
+          onClick={() => refetch()}
+          className="btn-editorial inline-flex items-center gap-2"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  // Empty state
+  if (!currentStudy || totalStudies === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="py-40 text-center space-y-8"
+      >
+        <div className="w-24 h-24 bg-white border border-border rounded-full flex items-center justify-center mx-auto shadow-sm">
+          <Check className="w-10 h-10 text-muted opacity-20" />
+        </div>
+        <div className="space-y-3">
+          <h2 className="text-5xl font-serif italic text-muted">Pipeline Exhausted.</h2>
+          <p className="text-muted font-serif italic text-xl max-w-md mx-auto">
+            All records in this phase have been processed. The methodology is preserved.
+          </p>
+        </div>
+        <button className="btn-editorial">Return to Workspace</button>
+      </motion.div>
+    );
+  }
+
+  const progress = ((currentIndex + 1) / totalStudies) * 100;
+  const authorsDisplay = currentStudy.authors.map(a => a.name).join(", ");
+
+  return (
+    <div className={cn(
+      "flex flex-col h-full transition-all duration-700 ease-in-out",
+      isFocused ? "fixed inset-0 bg-paper z-[100] p-12 overflow-hidden" : "space-y-12"
+    )}>
+      {/* Header */}
+      <header className={cn(
+        "flex justify-between items-center transition-all duration-500",
+        isFocused ? "max-w-7xl mx-auto w-full mb-12" : ""
+      )}>
+        <div className="flex items-center gap-10">
+          <div className="flex items-center gap-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted font-bold">
+              Phase: {currentPhase === "TITLE_ABSTRACT" ? "Title/Abstract" : currentPhase === "FULL_TEXT" ? "Full Text" : "Final"}
+            </span>
+            <div className="h-4 w-[1px] bg-border" />
+            <span className="font-mono text-[10px] font-bold tracking-widest text-ink">{currentIndex + 1} / {totalStudies}</span>
+          </div>
+          <div className="hidden md:flex items-center gap-3">
+            <div className="h-1 w-40 bg-white border border-border/50 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-ink"
+                initial={{ width: 0 }}
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.8, ease: "circOut" }}
+              />
+            </div>
+            <span className="font-mono text-[9px] uppercase text-muted tracking-widest">{Math.round(progress)}%</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <ToolbarButton
+            onClick={toggleFocusMode}
+            icon={isFocused ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+            label={isFocused ? "Exit Focus" : "Focus Mode (F)"}
+          />
+          {!isFocused && (
+            <>
+              <ToolbarButton icon={<History className="w-5 h-5" />} label="History" />
+              <ToolbarButton icon={<Keyboard className="w-5 h-5" />} label="Shortcuts" />
+            </>
+          )}
+        </div>
+      </header>
+
+      {/* Main Screening Area */}
+      <div className={cn(
+        "flex-1 grid gap-20",
+        isFocused ? "grid-cols-12 max-w-7xl mx-auto w-full" : "grid-cols-1"
+      )}>
+        {/* Study Content */}
+        <div className={cn(
+          "space-y-16 overflow-y-auto scroll-smooth pr-6 scrollbar-hide",
+          isFocused ? "col-span-8 pr-20" : "max-w-4xl"
+        )}>
+          <AnimatePresence mode="wait">
+            <motion.article
+              key={currentStudy.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="space-y-16"
+            >
+              <div className="space-y-8">
+                <h2 className="text-7xl font-serif leading-[1.05] tracking-tight text-ink decoration-intel-blue/20 underline-offset-8">
+                  {currentStudy.title}
+                </h2>
+                <div className="flex flex-wrap items-center gap-8 text-[11px] font-mono uppercase tracking-[0.25em] text-muted">
+                  <span className="font-bold text-ink/80">{authorsDisplay}</span>
+                  {currentStudy.journal && (
+                    <>
+                      <div className="w-1.5 h-1.5 rounded-full bg-intel-blue/40" />
+                      <span className="italic">{currentStudy.journal}</span>
+                    </>
+                  )}
+                  {currentStudy.year && (
+                    <>
+                      <div className="w-1.5 h-1.5 rounded-full bg-intel-blue/40" />
+                      <span>{currentStudy.year}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="accent-line opacity-20" />
+
+              <div className="space-y-10">
+                <div className="flex items-center gap-4">
+                  <h3 className="font-mono text-[10px] uppercase tracking-[0.4em] text-muted font-black">Abstract Synthesis</h3>
+                  <div className="flex-1 h-px bg-border/30" />
+                </div>
+                <p className="text-3xl font-serif leading-[1.55] italic text-ink/90 first-letter:text-8xl first-letter:font-bold first-letter:mr-3 first-letter:float-left first-letter:text-ink first-letter:leading-none select-text">
+                  {currentStudy.abstract || "No abstract available."}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-6 pt-12">
+                {currentStudy.aiSuggestion && currentStudy.aiConfidence && (
+                  <MetadataBadge
+                    icon={<Sparkles className="w-3.5 h-3.5 text-intel-blue animate-pulse" />}
+                    label={`AI Prediction: ${currentStudy.aiSuggestion} (${Math.round(currentStudy.aiConfidence * 100)}%)`}
+                    variant="intel"
+                  />
+                )}
+                {currentStudy.doi && (
+                  <MetadataBadge
+                    icon={<Info className="w-3.5 h-3.5" />}
+                    label={`DOI: ${currentStudy.doi}`}
+                  />
+                )}
+              </div>
+            </motion.article>
+          </AnimatePresence>
+        </div>
+
+        {/* Action Panel (Focused Mode Sidebar) */}
+        {isFocused && (
+          <div className="col-span-4 border-l border-border/50 pl-20 flex flex-col justify-center space-y-20">
+            <div className="space-y-12">
+              <h3 className="font-mono text-[10px] uppercase tracking-[0.4em] text-muted font-black">Adjudication</h3>
+              <div className="space-y-6">
+                <DecisionButton
+                  label="Include"
+                  shortcut="I"
+                  icon={<Check className="w-8 h-8" />}
+                  color="green"
+                  active={currentStudy.userDecision === 'INCLUDE'}
+                  loading={submitDecision.isPending}
+                  onClick={() => handleDecision('INCLUDE')}
+                />
+                <DecisionButton
+                  label="Exclude"
+                  shortcut="E"
+                  icon={<X className="w-8 h-8" />}
+                  color="red"
+                  active={currentStudy.userDecision === 'EXCLUDE'}
+                  loading={submitDecision.isPending}
+                  onClick={() => handleDecision('EXCLUDE')}
+                />
+                <DecisionButton
+                  label="Maybe"
+                  shortcut="M"
+                  icon={<HelpCircle className="w-8 h-8" />}
+                  color="muted"
+                  active={currentStudy.userDecision === 'MAYBE'}
+                  loading={submitDecision.isPending}
+                  onClick={() => handleDecision('MAYBE')}
+                />
+              </div>
+            </div>
+
+            <div className="pt-20 border-t border-border/30 space-y-8">
+              <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-[0.2em] text-muted">
+                <span>Navigate Workspace</span>
+                <div className="flex gap-4">
+                  <button 
+                    onClick={previous} 
+                    disabled={currentIndex === 0}
+                    className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={next}
+                    disabled={currentIndex >= totalStudies - 1}
+                    className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-6 bg-white/50 border border-border/40 rounded-sm">
+                <p className="text-[11px] text-muted-foreground font-serif italic leading-relaxed">
+                  Screening decisions are currently <span className="font-bold text-ink">blind</span>. Your assessment will remain confidential until the consensus phase.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Footer Decisions (Normal Mode) */}
+      {!isFocused && (
+        <footer className="fixed bottom-12 right-12 flex gap-8 bg-white/95 backdrop-blur-xl p-8 border border-border shadow-editorial rounded-sm z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="flex items-center gap-6 border-r border-border pr-8">
+            <button 
+              onClick={previous} 
+              disabled={currentIndex === 0}
+              className="p-2.5 hover:bg-paper rounded-full transition-all text-muted hover:text-ink border border-transparent hover:border-border disabled:opacity-50"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <div className="text-center min-w-[60px]">
+              <div className="font-mono text-xs font-bold text-ink">{currentIndex + 1}</div>
+              <div className="font-mono text-[8px] uppercase tracking-tighter text-muted">of {totalStudies}</div>
+            </div>
+            <button 
+              onClick={next}
+              disabled={currentIndex >= totalStudies - 1}
+              className="p-2.5 hover:bg-paper rounded-full transition-all text-muted hover:text-ink border border-transparent hover:border-border disabled:opacity-50"
+            >
+              <ChevronRight className="w-6 h-6" />
+            </button>
+          </div>
+          <div className="flex gap-4">
+            <DecisionButtonSmall
+              label="Exclude (E)"
+              color="red"
+              active={currentStudy.userDecision === 'EXCLUDE'}
+              loading={submitDecision.isPending}
+              onClick={() => handleDecision('EXCLUDE')}
+            />
+            <DecisionButtonSmall
+              label="Maybe (M)"
+              color="muted"
+              active={currentStudy.userDecision === 'MAYBE'}
+              loading={submitDecision.isPending}
+              onClick={() => handleDecision('MAYBE')}
+            />
+            <DecisionButtonSmall
+              label="Include (I)"
+              color="green"
+              active={currentStudy.userDecision === 'INCLUDE'}
+              loading={submitDecision.isPending}
+              onClick={() => handleDecision('INCLUDE')}
+            />
+          </div>
+        </footer>
+      )}
+    </div>
+  );
+}
+
+function ToolbarButton({ icon, onClick, label }: { icon: React.ReactNode, onClick?: () => void, label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="p-3 hover:bg-white rounded-full transition-all border border-transparent hover:border-border hover:shadow-sm group relative"
+    >
+      {icon}
+      <span className="absolute bottom-full right-0 mb-2 whitespace-nowrap bg-ink text-paper text-[9px] font-mono uppercase px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function MetadataBadge({ icon, label, variant = 'default' }: { icon: React.ReactNode, label: string, variant?: 'default' | 'intel' }) {
+  return (
+    <div className={cn(
+      "px-5 py-2.5 border text-[11px] font-mono uppercase tracking-widest rounded-full flex items-center gap-3 transition-all",
+      variant === 'intel'
+        ? "bg-intel-blue/5 border-intel-blue/30 text-intel-blue shadow-sm"
+        : "bg-white border-border text-muted hover:border-ink hover:text-ink"
+    )}>
+      {icon}
+      {label}
+    </div>
+  );
+}
+
+function DecisionButton({ label, shortcut, icon, color, active, loading, onClick }: { 
+  label: string, 
+  shortcut: string, 
+  icon: React.ReactNode, 
+  color: 'green' | 'red' | 'muted', 
+  active: boolean, 
+  loading?: boolean,
+  onClick: () => void 
+}) {
+  const colors = {
+    green: "hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-400",
+    red: "hover:bg-rose-50 hover:text-rose-800 hover:border-rose-400",
+    muted: "hover:bg-paper hover:text-ink hover:border-ink"
+  };
+
+  const activeColors = {
+    green: "bg-emerald-50 text-emerald-800 border-emerald-500 shadow-md translate-x-1",
+    red: "bg-rose-50 text-rose-800 border-rose-500 shadow-md translate-x-1",
+    muted: "bg-paper text-ink border-ink shadow-md translate-x-1"
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={cn(
+        "w-full flex items-center justify-between p-10 border transition-all duration-500 group rounded-sm outline-none disabled:opacity-50",
+        active ? activeColors[color] : cn("border-border/40 bg-white", colors[color])
+      )}
+    >
+      <div className="flex items-center gap-10">
+        <div className={cn(
+          "w-16 h-16 flex items-center justify-center border transition-all duration-700 ease-out",
+          active ? "border-current rotate-0 scale-110" : "border-border/30 group-hover:border-current -rotate-12 group-hover:rotate-0"
+        )}>
+          {loading ? <Loader2 className="w-8 h-8 animate-spin" /> : icon}
+        </div>
+        <span className="text-5xl font-serif italic tracking-tighter transition-all group-hover:translate-x-2">{label}</span>
+      </div>
+      <kbd className="hidden group-hover:block font-mono text-[10px] opacity-20 tracking-[0.3em] font-black">{shortcut}</kbd>
+    </button>
+  );
+}
+
+function DecisionButtonSmall({ label, color, active, loading, onClick }: { 
+  label: string, 
+  color: 'green' | 'red' | 'muted', 
+  active: boolean, 
+  loading?: boolean,
+  onClick: () => void 
+}) {
+  const colors = {
+    green: "text-emerald-700 hover:bg-emerald-50 hover:border-emerald-300",
+    red: "text-rose-700 hover:bg-rose-50 hover:border-rose-300",
+    muted: "text-muted hover:bg-paper hover:border-border"
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={cn(
+        "px-10 py-4 border border-border/40 font-serif italic text-xl transition-all rounded-sm disabled:opacity-50",
+        active ? "bg-ink text-paper border-ink shadow-editorial translate-y-[-4px]" : colors[color]
+      )}
+    >
+      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : label}
+    </button>
+  );
+}
