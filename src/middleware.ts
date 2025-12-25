@@ -1,49 +1,60 @@
-import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { getSecurityHeaders } from "@/lib/security";
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth;
-  const isAuthPage = req.nextUrl.pathname.startsWith("/login") || 
-                     req.nextUrl.pathname.startsWith("/verify-request") ||
-                     req.nextUrl.pathname.startsWith("/onboarding");
-  const isApiAuthRoute = req.nextUrl.pathname.startsWith("/api/auth");
-  const isPublicRoute = req.nextUrl.pathname === "/" || 
-                        req.nextUrl.pathname.startsWith("/api/search/external");
+export function middleware(request: NextRequest) {
+  const response = NextResponse.next();
 
-  // Debug logging in development
-  if (process.env.NODE_ENV === "development") {
-    console.log(`[Middleware] ${req.method} ${req.nextUrl.pathname} - isLoggedIn: ${isLoggedIn}`);
+  // Add security headers
+  const securityHeaders = getSecurityHeaders();
+  Object.entries(securityHeaders).forEach(([key, value]) => {
+    response.headers.set(key, value);
+  });
+
+  // Add request ID for tracing
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+  response.headers.set("X-Request-Id", requestId);
+
+  // CORS headers for API routes
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    const origin = request.headers.get("origin");
+    
+    // Allow same-origin and configured origins
+    if (origin) {
+      const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [];
+      if (
+        origin === request.nextUrl.origin ||
+        allowedOrigins.includes(origin) ||
+        allowedOrigins.includes("*")
+      ) {
+        response.headers.set("Access-Control-Allow-Origin", origin);
+        response.headers.set(
+          "Access-Control-Allow-Methods",
+          "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        );
+        response.headers.set(
+          "Access-Control-Allow-Headers",
+          "Content-Type, Authorization, X-Api-Key"
+        );
+        response.headers.set("Access-Control-Max-Age", "86400");
+      }
+    }
+
+    // Handle preflight
+    if (request.method === "OPTIONS") {
+      return new NextResponse(null, {
+        status: 204,
+        headers: response.headers,
+      });
+    }
   }
 
-  // Allow auth routes
-  if (isApiAuthRoute) {
-    return NextResponse.next();
-  }
-
-  // Redirect logged-in users away from auth pages
-  if (isLoggedIn && isAuthPage) {
-    return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
-  }
-
-  // Redirect non-logged-in users to login (except for public routes)
-  if (!isLoggedIn && !isAuthPage && !isPublicRoute) {
-    const callbackUrl = encodeURIComponent(req.nextUrl.pathname + req.nextUrl.search);
-    return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, req.nextUrl));
-  }
-
-  return NextResponse.next();
-});
+  return response;
+}
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|sw.js|workbox).*)",
+    // Match all paths except static files and Next.js internals
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
-
