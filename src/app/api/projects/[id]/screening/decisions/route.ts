@@ -31,10 +31,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const isBatch = Array.isArray(body.projectWorkIds);
     
     if (isBatch) {
-      return handleBatchDecision(projectId, session.user.id, body);
+      return await handleBatchDecision(projectId, session.user.id, body);
     }
 
-    return handleSingleDecision(projectId, session.user.id, body);
+    return await handleSingleDecision(projectId, session.user.id, body);
   } catch (error) {
     return handleApiError(error);
   }
