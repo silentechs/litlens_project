@@ -1,38 +1,32 @@
-import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth;
-  const isAuthPage = req.nextUrl.pathname.startsWith("/login") || 
-                     req.nextUrl.pathname.startsWith("/verify-request") ||
-                     req.nextUrl.pathname.startsWith("/onboarding");
-  const isApiAuthRoute = req.nextUrl.pathname.startsWith("/api/auth");
-  const isPublicRoute = req.nextUrl.pathname === "/" || 
-                        req.nextUrl.pathname.startsWith("/api/search/external");
-
-  // Debug logging in development
-  if (process.env.NODE_ENV === "development") {
-    console.log(`[Middleware] ${req.method} ${req.nextUrl.pathname} - isLoggedIn: ${isLoggedIn}`);
+export function middleware(request: NextRequest) {
+  // Check if NEXTAUTH_SECRET is configured
+  if (!process.env.NEXTAUTH_SECRET) {
+    // If not configured, show a setup page for root route only
+    if (request.nextUrl.pathname === "/") {
+      return NextResponse.json({
+        error: "Application not configured",
+        message: "Please configure environment variables in Vercel dashboard",
+        required: ["NEXTAUTH_SECRET", "DATABASE_URL"]
+      }, { status: 503 });
+    }
   }
 
-  // Allow auth routes
-  if (isApiAuthRoute) {
-    return NextResponse.next();
-  }
+  const isAuthPage = request.nextUrl.pathname.startsWith("/login") || 
+                     request.nextUrl.pathname.startsWith("/verify-request") ||
+                     request.nextUrl.pathname.startsWith("/register") ||
+                     request.nextUrl.pathname.startsWith("/onboarding");
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
+  const isPublicRoute = request.nextUrl.pathname === "/" || 
+                        request.nextUrl.pathname.startsWith("/_next") ||
+                        request.nextUrl.pathname.startsWith("/icons") ||
+                        request.nextUrl.pathname.startsWith("/manifest");
 
-  // Redirect logged-in users away from auth pages
-  if (isLoggedIn && isAuthPage) {
-    return NextResponse.redirect(new URL("/dashboard", req.nextUrl));
-  }
-
-  // Redirect non-logged-in users to login (except for public routes)
-  if (!isLoggedIn && !isAuthPage && !isPublicRoute) {
-    const callbackUrl = encodeURIComponent(req.nextUrl.pathname + req.nextUrl.search);
-    return NextResponse.redirect(new URL(`/login?callbackUrl=${callbackUrl}`, req.nextUrl));
-  }
-
+  // Allow all routes to pass - NextAuth will handle auth
   return NextResponse.next();
-});
+}
 
 export const config = {
   matcher: [
