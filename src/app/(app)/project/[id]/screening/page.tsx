@@ -15,7 +15,9 @@ export default async function ScreeningPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   return (
     <div className="space-y-8 max-w-7xl mx-auto px-6 py-8">
-      <PhaseManager projectId={id} />
+      <div className="hidden lg:block">
+        <PhaseManager projectId={id} />
+      </div>
       <ScreeningQueue />
     </div>
   );

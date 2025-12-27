@@ -46,6 +46,7 @@ model User {
   extractionData        ExtractionData[]
   qualityAssessments    QualityAssessment[]
   chatMessages          ChatMessage[]
+  sentInvitations       ProjectInvitation[]
 
   @@index([email])
 }
@@ -250,6 +251,7 @@ model Project {
   writingProjects WritingProject[]
   calibrationRounds CalibrationRound[]
   chatMessages    ChatMessage[]
+  invitations     ProjectInvitation[]
 
   @@index([organizationId])
   @@index([status])
@@ -284,6 +286,27 @@ enum ProjectRole {
   LEAD
   REVIEWER
   OBSERVER
+}
+
+model ProjectInvitation {
+  id        String   @id @default(cuid())
+  projectId String
+  email     String
+  role      ProjectRole @default(REVIEWER)
+  token     String   @unique
+  expiresAt DateTime
+  
+  invitedBy String
+  inviter   User     @relation(fields: [invitedBy], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, email])
+  @@index([token])
+  @@index([email])
 }
 
 // ============== CANONICAL WORK ENTITY ==============
@@ -1198,6 +1221,7 @@ enum ActivityType {
   EXPORT_GENERATED
   TEAM_MEMBER_ADDED
   TEAM_MEMBER_REMOVED
+  TEAM_MEMBER_INVITED
   SETTINGS_UPDATED
 }
 

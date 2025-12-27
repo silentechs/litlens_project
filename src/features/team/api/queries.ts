@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { ProjectRole } from "@/types/project";
 
 interface AddMemberInput {
@@ -17,6 +17,31 @@ interface RemoveMemberInput {
     memberId: string;
 }
 
+
+export interface TeamMember {
+    id: string;
+    userId: string;
+    role: 'OWNER' | 'LEAD' | 'REVIEWER' | 'OBSERVER';
+    joinedAt: string;
+    user: {
+        id: string;
+        name: string | null;
+        email: string;
+        image: string | null;
+        institution: string | null;
+    };
+    stats: {
+        total: number;
+        included: number;
+        excluded: number;
+        maybe: number;
+    };
+}
+
+export interface MembersResponse {
+    members: TeamMember[];
+    total: number;
+}
 async function addMember(projectId: string, input: AddMemberInput) {
     const response = await fetch(`/api/projects/${projectId}/members`, {
         method: "POST",
@@ -90,5 +115,17 @@ export function useRemoveMember(projectId: string) {
             queryClient.invalidateQueries({ queryKey: ["project-members", projectId] });
             queryClient.invalidateQueries({ queryKey: ["projects", "detail", projectId] });
         },
+    });
+}
+
+export function useProjectMembers(projectId: string) {
+    return useQuery<MembersResponse>({
+        queryKey: ["project-members", projectId],
+        queryFn: async () => {
+            const res = await fetch(`/api/projects/${projectId}/members`);
+            if (!res.ok) throw new Error("Failed to fetch team members");
+            return res.json();
+        },
+        enabled: !!projectId,
     });
 }

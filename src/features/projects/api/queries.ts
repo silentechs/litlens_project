@@ -1,109 +1,16 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { 
-  ProjectListItem, 
-  ProjectWithRelations, 
+import type {
+  ProjectListItem,
+  ProjectWithRelations,
   ProjectStats,
   CreateProjectInput,
   UpdateProjectInput,
 } from "@/types/project";
 import type { ApiSuccessResponse, PaginationMeta } from "@/types/api";
 
-// ============== API CLIENT FUNCTIONS ==============
-
-async function fetchProjects(params: {
-  page?: number;
-  limit?: number;
-  status?: string;
-  search?: string;
-}): Promise<{ items: ProjectListItem[]; pagination: PaginationMeta }> {
-  const searchParams = new URLSearchParams();
-  if (params.page) searchParams.set("page", params.page.toString());
-  if (params.limit) searchParams.set("limit", params.limit.toString());
-  if (params.status) searchParams.set("status", params.status);
-  if (params.search) searchParams.set("search", params.search);
-
-  const response = await fetch(`/api/projects?${searchParams.toString()}`, {
-    credentials: 'include', // Ensure cookies are sent
-  });
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to fetch projects");
-  }
-
-  const data: ApiSuccessResponse<{ items: ProjectListItem[]; pagination: PaginationMeta }> = 
-    await response.json();
-  return data.data;
-}
-
-async function fetchProject(id: string): Promise<ProjectWithRelations> {
-  const response = await fetch(`/api/projects/${id}`);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to fetch project");
-  }
-
-  const data: ApiSuccessResponse<ProjectWithRelations> = await response.json();
-  return data.data;
-}
-
-async function fetchProjectStats(projectId: string): Promise<ProjectStats> {
-  const response = await fetch(`/api/projects/${projectId}/stats`);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to fetch project stats");
-  }
-
-  const data: ApiSuccessResponse<ProjectStats> = await response.json();
-  return data.data;
-}
-
-async function createProject(input: CreateProjectInput): Promise<ProjectWithRelations> {
-  const response = await fetch("/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to create project");
-  }
-
-  const data: ApiSuccessResponse<ProjectWithRelations> = await response.json();
-  return data.data;
-}
-
-async function updateProject(
-  id: string, 
-  input: UpdateProjectInput
-): Promise<ProjectWithRelations> {
-  const response = await fetch(`/api/projects/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to update project");
-  }
-
-  const data: ApiSuccessResponse<ProjectWithRelations> = await response.json();
-  return data.data;
-}
-
-async function deleteProject(id: string): Promise<void> {
-  const response = await fetch(`/api/projects/${id}`, {
-    method: "DELETE",
-  });
-
-  if (!response.ok && response.status !== 204) {
-    const error = await response.json();
-    throw new Error(error.error?.message || "Failed to delete project");
-  }
-}
+import { projectsApi } from "@/lib/api-client";
 
 // ============== QUERY KEYS ==============
 
@@ -126,7 +33,10 @@ export function useProjects(params: {
 } = {}) {
   return useQuery({
     queryKey: projectKeys.list(params),
-    queryFn: () => fetchProjects(params),
+    queryFn: () => projectsApi.list(params).then(res => ({
+      items: res.items as unknown as ProjectListItem[],
+      pagination: res.pagination
+    })),
     staleTime: 30 * 1000, // 30 seconds
   });
 }
@@ -134,7 +44,7 @@ export function useProjects(params: {
 export function useProject(id: string | undefined) {
   return useQuery({
     queryKey: projectKeys.detail(id!),
-    queryFn: () => fetchProject(id!),
+    queryFn: () => projectsApi.get(id!).then(res => res as unknown as ProjectWithRelations),
     enabled: !!id,
     staleTime: 60 * 1000, // 1 minute
   });
@@ -143,7 +53,7 @@ export function useProject(id: string | undefined) {
 export function useProjectStats(projectId: string | undefined) {
   return useQuery({
     queryKey: projectKeys.stats(projectId!),
-    queryFn: () => fetchProjectStats(projectId!),
+    queryFn: () => projectsApi.getStats(projectId!).then(res => res as unknown as ProjectStats),
     enabled: !!projectId,
     staleTime: 30 * 1000, // 30 seconds
   });
@@ -155,11 +65,11 @@ export function useCreateProject() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: createProject,
+    mutationFn: (input: CreateProjectInput) => projectsApi.create(input).then(res => res as unknown as ProjectWithRelations),
     onSuccess: (newProject) => {
       // Invalidate project lists
       queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
-      
+
       // Optionally pre-populate the cache with the new project
       queryClient.setQueryData(projectKeys.detail(newProject.id), newProject);
     },
@@ -171,14 +81,14 @@ export function useUpdateProject() {
 
   return useMutation({
     mutationFn: ({ id, ...data }: UpdateProjectInput & { id: string }) =>
-      updateProject(id, data),
+      projectsApi.update(id, data).then(res => res as unknown as ProjectWithRelations),
     onSuccess: (updatedProject) => {
       // Update cache
       queryClient.setQueryData(
-        projectKeys.detail(updatedProject.id), 
+        projectKeys.detail(updatedProject.id),
         updatedProject
       );
-      
+
       // Invalidate lists
       queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
     },
@@ -189,11 +99,11 @@ export function useDeleteProject() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: deleteProject,
+    mutationFn: (id: string) => projectsApi.delete(id),
     onSuccess: (_, deletedId) => {
       // Remove from cache
       queryClient.removeQueries({ queryKey: projectKeys.detail(deletedId) });
-      
+
       // Invalidate lists
       queryClient.invalidateQueries({ queryKey: projectKeys.lists() });
     },
@@ -207,7 +117,7 @@ export function useOptimisticProjectUpdate() {
 
   return useMutation({
     mutationFn: ({ id, ...data }: UpdateProjectInput & { id: string }) =>
-      updateProject(id, data),
+      projectsApi.update(id, data).then(res => res as unknown as ProjectWithRelations),
     onMutate: async ({ id, ...newData }) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: projectKeys.detail(id) });

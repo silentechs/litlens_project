@@ -15,11 +15,17 @@ async function getAdminStats() {
         userCount,
         projectCount,
         activeProjects,
+        screenedCount,
         recentActivities,
     ] = await Promise.all([
         db.user.count(),
         db.project.count(),
         db.project.count({ where: { status: "ACTIVE" } }),
+        db.projectWork.count({
+            where: {
+                status: { in: ["INCLUDED", "EXCLUDED"] }
+            }
+        }),
         db.activity.findMany({
             take: 10,
             orderBy: { createdAt: "desc" },
@@ -31,9 +37,12 @@ async function getAdminStats() {
         userCount,
         projectCount,
         activeProjects,
+        screenedCount,
         recentActivities,
     };
 }
+
+
 
 export default async function AdminOverviewPage() {
     const stats = await getAdminStats();
@@ -69,9 +78,8 @@ export default async function AdminOverviewPage() {
                 />
                 <StatCard
                     title="Studies Screened"
-                    value="—"
+                    value={stats.screenedCount}
                     icon={<FileText className="w-5 h-5" />}
-                    description="Coming soon"
                 />
             </div>
 

@@ -1,16 +1,19 @@
 "use client";
 
-import { useProject, useUpdateProject } from "@/features/projects/api/queries";
+import { useProject, useUpdateProject, useDeleteProject } from "@/features/projects/api/queries";
 import { Loader2, AlertCircle, Shield, Users } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { useState, useEffect, use } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
 
 export default function ProjectSettingsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
+    const router = useRouter();
     const { data: project, isLoading, isError } = useProject(id);
     const updateProject = useUpdateProject();
+    const deleteProject = useDeleteProject();
 
     const [requireDualScreening, setRequireDualScreening] = useState(false);
     const [blindScreening, setBlindScreening] = useState(false);
@@ -37,6 +40,21 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ id: 
                 },
             }
         );
+    };
+
+    const handleDelete = () => {
+        if (window.confirm("Are you absolutely sure? This cannot be undone.")) {
+            deleteProject.mutate(id, {
+                onSuccess: () => {
+                    toast.success("Project deleted");
+                    router.push("/projects");
+                },
+                onError: (error) => {
+                    toast.error("Failed to delete project");
+                    console.error(error);
+                }
+            });
+        }
     };
 
     const handleToggle = (setter: (val: boolean) => void, val: boolean) => {
@@ -117,16 +135,28 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ id: 
                     </div>
                 </section>
 
-                {/* Danger Zone (placeholder) */}
+                {/* Danger Zone */}
                 <section className="space-y-6 pt-10">
                     <h2 className="text-xl font-serif font-bold flex items-center gap-3 text-rose-700">
                         <Shield className="w-5 h-5" />
                         Danger Zone
                     </h2>
-                    <div className="p-6 bg-rose-50 border border-rose-100 rounded-sm">
-                        <p className="text-sm text-rose-800">
-                            Project archival and deletion options will be available here once the project is completed.
-                        </p>
+                    <div className="p-6 bg-rose-50 border border-rose-100 rounded-sm flex items-center justify-between">
+                        <div>
+                            <h3 className="text-base font-bold text-rose-800">Delete Project</h3>
+                            <p className="text-sm text-rose-700 mt-1 max-w-md">
+                                This action is permanent and cannot be undone. All studies, screening decisions, and data will be lost.
+                            </p>
+                        </div>
+                        <Button
+                            variant="destructive"
+                            onClick={handleDelete}
+                            disabled={deleteProject.isPending}
+                            className="bg-rose-600 hover:bg-rose-700"
+                        >
+                            {deleteProject.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                            Delete Project
+                        </Button>
                     </div>
                 </section>
             </div>

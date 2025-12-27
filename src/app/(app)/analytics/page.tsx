@@ -1,9 +1,13 @@
 "use client";
 
-import { LineChart, ArrowRight } from "lucide-react";
+import { useProjects } from "@/features/projects/api/queries";
+import { LineChart, ArrowRight, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function GlobalAnalyticsPage() {
+  const { data, isLoading, isError } = useProjects();
+  const projects = data?.items || [];
+
   return (
     <div className="space-y-12 pb-20">
       <header className="space-y-4">
@@ -13,9 +17,35 @@ export default function GlobalAnalyticsPage() {
 
       <div className="accent-line" />
 
+      {isLoading && (
+        <div className="py-20 text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto text-muted" />
+          <p className="mt-4 text-muted font-serif italic">Aggregating evidence metrics...</p>
+        </div>
+      )}
+
+      {isError && (
+        <div className="py-20 text-center text-rose-500">
+          <AlertCircle className="w-8 h-8 mx-auto" />
+          <p className="mt-4 font-serif">Failed to load analytics data.</p>
+        </div>
+      )}
+
+      {!isLoading && !isError && projects.length === 0 && (
+        <div className="py-20 text-center text-muted">
+          <p className="font-serif italic text-xl">No active projects found.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-6 max-w-3xl">
-        <ProjectLinkCard id="1" title="Impact of LLMs on Clinical Practice" progress={45} />
-        <ProjectLinkCard id="2" title="Global Trends in Renewable Energy Policy" progress={12} />
+        {projects.map((project: any) => (
+          <ProjectLinkCard
+            key={project.id}
+            id={project.id}
+            title={project.title}
+            progress={project.progress}
+          />
+        ))}
       </div>
     </div>
   );

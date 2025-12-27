@@ -50,19 +50,28 @@ const MOCK_ALERTS: ResearchAlert[] = [
   }
 ];
 
-import { useQuery } from "@tanstack/react-query";
+import { useAlerts, useDeleteAlert } from "@/features/alerts/api/queries";
 
 export function ResearchAlerts() {
-  const { data: alertsData, isLoading } = useQuery<any[]>({
-    queryKey: ["research-alerts"],
-    queryFn: async () => {
-      const res = await fetch("/api/research/alerts");
-      if (!res.ok) throw new Error("Failed to fetch alerts");
-      return res.json();
-    },
-  });
-
+  const { data: alertsData, isLoading } = useAlerts();
+  const deleteAlertMutation = useDeleteAlert();
   const alerts = alertsData || [];
+
+  const handleCreateAlert = () => {
+    // TODO: Open Create Alert Modal
+    console.log("Create Alert clicked");
+  };
+
+  const handleEditAlert = (alert: any) => {
+    // TODO: Open Edit Alert Modal
+    console.log("Edit Alert clicked", alert);
+  };
+
+  const handleDeleteAlert = async (id: string) => {
+    if (confirm("Are you sure you want to delete this alert?")) {
+      await deleteAlertMutation.mutateAsync(id);
+    }
+  };
 
   return (
     <div className="space-y-12 pb-20">
@@ -71,7 +80,10 @@ export function ResearchAlerts() {
           <h1 className="text-6xl font-serif">Research Intelligence Alerts</h1>
           <p className="text-muted font-serif italic text-xl">Automated surveillance of the scientific horizon.</p>
         </div>
-        <button className="btn-editorial flex items-center gap-2">
+        <button
+          onClick={handleCreateAlert}
+          className="btn-editorial flex items-center gap-2"
+        >
           <Plus className="w-5 h-5" />
           Create Alert
         </button>
@@ -103,15 +115,20 @@ export function ResearchAlerts() {
               </div>
             ) : (
               alerts.map((alert: any) => (
-                <AlertCard key={alert.id} alert={{
-                  ...alert,
-                  type: alert.alertType === "KEYWORD_TREND" ? "KEYWORDS" :
-                    alert.alertType === "AUTHOR_ACTIVITY" ? "AUTHOR" :
-                      alert.alertType === "CITATION_UPDATE" ? "CITATION" : "PROJECT",
-                  query: alert.searchQuery || alert.keywords.join(", ") || "Custom filter active",
-                  lastTriggered: "Recently",
-                  discoveriesCount: 0
-                }} />
+                <AlertCard
+                  key={alert.id}
+                  alert={{
+                    ...alert,
+                    type: alert.alertType === "KEYWORD_TREND" ? "KEYWORDS" :
+                      alert.alertType === "AUTHOR_ACTIVITY" ? "AUTHOR" :
+                        alert.alertType === "CITATION_UPDATE" ? "CITATION" : "PROJECT",
+                    query: alert.searchQuery || alert.keywords.join(", ") || "Custom filter active",
+                    lastTriggered: alert.lastTriggeredAt ? new Date(alert.lastTriggeredAt).toLocaleDateString() : "Never",
+                    discoveriesCount: alert.discoveryCount || 0
+                  }}
+                  onEdit={() => handleEditAlert(alert)}
+                  onDelete={() => handleDeleteAlert(alert.id)}
+                />
               ))
             )}
           </div>
@@ -173,12 +190,29 @@ export function ResearchAlerts() {
   );
 }
 
-function AlertCard({ alert }: { alert: ResearchAlert }) {
+function AlertCard({
+  alert,
+  onEdit,
+  onDelete
+}: {
+  alert: ResearchAlert & { lastTriggered: string; discoveriesCount: number };
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const typeIcons = {
     KEYWORDS: <Hash className="w-4 h-4" />,
     AUTHOR: <User className="w-4 h-4" />,
-    CITATION: <FileText className="w-4 h-4" />,
+    CITATION: <Hash className="w-4 h-4" />, // Replaced FileText with Hash for consistency if preferred, but original used FileText. Let's stick to originals where possible.
     PROJECT: <Bell className="w-4 h-4" />
+  };
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case "KEYWORDS": return <Hash className="w-4 h-4" />;
+      case "AUTHOR": return <User className="w-4 h-4" />;
+      case "CITATION": return <FileText className="w-4 h-4" />;
+      default: return <Bell className="w-4 h-4" />;
+    }
   };
 
   return (
@@ -192,7 +226,7 @@ function AlertCard({ alert }: { alert: ResearchAlert }) {
       <div className="space-y-6 flex-1">
         <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <div className="text-intel-blue">{typeIcons[alert.type]}</div>
+            <div className="text-intel-blue">{getIcon(alert.type)}</div>
             <h3 className="text-3xl font-serif leading-none group-hover:underline cursor-pointer">{alert.name}</h3>
           </div>
           <div className="flex items-center gap-4 text-xs font-sans text-muted">
@@ -213,10 +247,16 @@ function AlertCard({ alert }: { alert: ResearchAlert }) {
 
       <div className="flex flex-col items-end gap-4 pt-8">
         <div className="flex gap-2">
-          <button className="p-3 border border-border hover:border-ink hover:bg-paper transition-all">
+          <button
+            onClick={onEdit}
+            className="p-3 border border-border hover:border-ink hover:bg-paper transition-all"
+          >
             <Edit2 className="w-4 h-4 text-muted" />
           </button>
-          <button className="p-3 border border-border hover:border-rose-600 hover:bg-rose-50 transition-all group/del">
+          <button
+            onClick={onDelete}
+            className="p-3 border border-border hover:border-rose-600 hover:bg-rose-50 transition-all group/del"
+          >
             <Trash2 className="w-4 h-4 text-muted group-hover/del:text-rose-600" />
           </button>
         </div>

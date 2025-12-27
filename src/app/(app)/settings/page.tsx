@@ -4,11 +4,19 @@ import { Globe } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 
+import { useUserPreferences, useUpdateUserPreferences } from "@/features/user/api/queries";
+
 export default function SettingsPage() {
   const { data: session } = useSession();
-  const user = session?.user;
+  const { data: preferences, isLoading } = useUserPreferences();
+  const updatePreferencesMutation = useUpdateUserPreferences();
 
+  const user = session?.user;
   const initial = user?.name ? user.name[0].toUpperCase() : (user?.email ? user.email[0].toUpperCase() : "?");
+
+  const handleToggle = (key: string, currentValue: boolean) => {
+    updatePreferencesMutation.mutate({ [key]: !currentValue });
+  };
 
   return (
     <div className="space-y-12 pb-20">
@@ -53,11 +61,30 @@ export default function SettingsPage() {
 
           <section className="space-y-6">
             <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted border-b border-border pb-4">Notifications</h3>
-            <div className="space-y-4">
-              <SettingToggle label="Email Summaries" description="Receive weekly digests of new research discoveries." active />
-              <SettingToggle label="Real-time Alerts" description="Notify me immediately when conflicts are detected." active />
-              <SettingToggle label="Institutional Updates" description="Synchronize project changes with university repository." />
-            </div>
+            {isLoading ? (
+              <div className="py-12 text-center text-muted italic font-serif">Loading preferences...</div>
+            ) : (
+              <div className="space-y-4">
+                <SettingToggle
+                  label="Email Summaries"
+                  description="Receive weekly digests of new research discoveries."
+                  active={preferences?.emailNotifications}
+                  onToggle={() => handleToggle("emailNotifications", !!preferences?.emailNotifications)}
+                />
+                <SettingToggle
+                  label="In-App Alerts"
+                  description="Notify me immediately when conflicts or new works are detected."
+                  active={preferences?.inAppNotifications}
+                  onToggle={() => handleToggle("inAppNotifications", !!preferences?.inAppNotifications)}
+                />
+                <SettingToggle
+                  label="Push Notifications"
+                  description="Receive browser push notifications for urgent project updates."
+                  active={preferences?.pushNotifications}
+                  onToggle={() => handleToggle("pushNotifications", !!preferences?.pushNotifications)}
+                />
+              </div>
+            )}
           </section>
         </main>
       </div>
@@ -65,14 +92,17 @@ export default function SettingsPage() {
   );
 }
 
-function SettingToggle({ label, description, active }: { label: string, description: string, active?: boolean }) {
+function SettingToggle({ label, description, active, onToggle }: { label: string, description: string, active?: boolean, onToggle?: () => void }) {
   return (
     <div className="flex justify-between items-center p-8 bg-white border border-border group hover:border-ink transition-all">
       <div className="space-y-1">
         <h4 className="font-serif font-bold italic text-lg">{label}</h4>
         <p className="text-sm font-serif italic text-muted">{description}</p>
       </div>
-      <div className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${active ? 'bg-ink' : 'bg-paper border border-border'}`}>
+      <div
+        onClick={onToggle}
+        className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${active ? 'bg-ink' : 'bg-paper border border-border'}`}
+      >
         <div className={`absolute top-1 w-4 h-4 rounded-full transition-all ${active ? 'right-1 bg-paper' : 'left-1 bg-border'}`} />
       </div>
     </div>

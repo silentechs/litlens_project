@@ -10,6 +10,7 @@ const withPWA = withPWAInit({
 
 const nextConfig: NextConfig = {
   turbopack: {}, // Required for Next.js 16
+  // @ts-ignore
   eslint: {
     // Warning: This allows production builds to successfully complete even if
     // your project has ESLint errors.

@@ -15,47 +15,21 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { useResolveConflict } from "@/features/screening/api/queries";
+import { useConflicts, useResolveConflict } from "@/features/screening/api/queries";
+import type { Conflict as ConflictType } from "@/lib/api-client";
 
-interface Conflict {
-  id: string;
-  work: {
-    title: string;
-    authors: { name: string }[];
-    year: number;
-    abstract?: string;
-  } | null;
-  decisions: {
-    reviewerName: string | null;
-    reviewerId: string;
-    decision: 'INCLUDE' | 'EXCLUDE' | 'MAYBE';
-    reasoning: string | null;
-  }[];
-}
-
-interface ConflictsResponse {
-  items: Conflict[];
-  total: number;
-}
+// Local interfaces replaced by api-client types
 
 export function ConflictAdjudicator() {
   const params = useParams();
   const projectId = params.id as string;
 
-  const { data, isLoading, refetch } = useQuery<ConflictsResponse>({
-    queryKey: ["project-conflicts", projectId],
-    queryFn: async () => {
-      const res = await fetch(`/api/projects/${projectId}/conflicts?status=PENDING`);
-      if (!res.ok) throw new Error("Failed to fetch conflicts");
-      return res.json();
-    },
-    enabled: !!projectId,
-  });
+  const { data, isLoading, refetch } = useConflicts(projectId, { status: "PENDING" });
 
   const resolveConflict = useResolveConflict(projectId);
   const conflicts = data?.items || [];
   const [currentIndex, setCurrentIndex] = useState(0);
-  const activeConflict = conflicts[currentIndex];
+  const activeConflict = (conflicts[currentIndex] as unknown as ConflictType) || undefined;
 
   const handleResolve = async (decision: 'INCLUDE' | 'EXCLUDE' | 'MAYBE') => {
     if (!activeConflict) return;

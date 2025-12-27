@@ -93,8 +93,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Build where clause
     const where: Record<string, unknown> = { projectId };
-    if (status) where.screeningStatus = status;
-    if (phase) where.screeningPhase = phase;
+    if (status) where.status = status;
+    if (phase) where.phase = phase;
     if (search) {
       where.work = {
         OR: [

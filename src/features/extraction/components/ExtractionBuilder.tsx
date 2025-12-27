@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  Plus, 
-  Settings, 
-  GripVertical, 
-  Trash2, 
-  ChevronDown, 
+import {
+  Plus,
+  Settings,
+  GripVertical,
+  Trash2,
+  ChevronDown,
   ToggleLeft,
   Type,
   ListOrdered,
@@ -15,7 +15,9 @@ import {
   Hash,
   Sparkles,
   Save,
-  Play
+  Play,
+  ChevronLeft,
+  Loader2
 } from "lucide-react";
 import { motion, Reorder } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -39,11 +41,43 @@ const FIELD_TYPES: { type: FieldType; icon: React.ReactNode; label: string }[] =
   { type: 'boolean', icon: <ToggleLeft className="w-4 h-4" />, label: "Boolean (Yes/No)" },
 ];
 
-export function ExtractionBuilder() {
+import { useCreateExtractionTemplate } from "../api/queries";
+import { toast } from "sonner";
+
+interface ExtractionBuilderProps {
+  projectId: string;
+  onBack?: () => void;
+}
+
+export function ExtractionBuilder({ projectId, onBack }: ExtractionBuilderProps) {
+  const [templateName, setTemplateName] = useState("New Extraction Template");
+  const { mutate: createTemplate, isPending } = useCreateExtractionTemplate(projectId);
+
   const [fields, setFields] = useState<ExtractionField[]>([
     { id: "f1", type: 'text', label: "Sample Population Details", required: true },
     { id: "f2", type: 'numeric', label: "Mean Age", required: false },
   ]);
+
+  const handleSave = () => {
+    if (!templateName.trim()) {
+      toast.error("Please provide a template name");
+      return;
+    }
+
+    createTemplate({
+      name: templateName,
+      description: "Created via Builder", // Could add a field for this
+      fields: fields
+    }, {
+      onSuccess: () => {
+        toast.success("Template saved successfully");
+        if (onBack) onBack();
+      },
+      onError: () => {
+        toast.error("Failed to save template");
+      }
+    });
+  };
 
   const addField = (type: FieldType) => {
     const newField: ExtractionField = {
@@ -67,12 +101,30 @@ export function ExtractionBuilder() {
     <div className="space-y-12 pb-20">
       <header className="flex justify-between items-end">
         <div className="space-y-4">
-          <h1 className="text-6xl font-serif">Extraction Blueprint</h1>
+          <div className="flex items-center gap-4">
+            {onBack && (
+              <button onClick={onBack} className="p-2 border border-border hover:bg-paper transition-all rounded-full">
+                <ChevronLeft className="w-5 h-5 text-muted" />
+              </button>
+            )}
+            <input
+              type="text"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              className="text-6xl font-serif bg-transparent border-none outline-none placeholder:text-muted/50 w-full"
+              placeholder="Template Name"
+            />
+          </div>
           <p className="text-muted font-serif italic text-xl">Designing the instrument for evidence harvesting.</p>
         </div>
         <div className="flex gap-4">
-          <button className="px-6 py-2 border border-border text-xs font-mono uppercase tracking-widest hover:bg-paper transition-all flex items-center gap-2">
-            <Save className="w-4 h-4" /> Save Template
+          <button
+            onClick={handleSave}
+            disabled={isPending}
+            className="px-6 py-2 border border-border text-xs font-mono uppercase tracking-widest hover:bg-paper transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            Save Template
           </button>
           <button className="btn-editorial flex items-center gap-2">
             <Play className="w-4 h-4" /> Deploy to Workspace
@@ -89,7 +141,7 @@ export function ExtractionBuilder() {
             <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted border-b border-border pb-4">Field Library</h3>
             <div className="space-y-1">
               {FIELD_TYPES.map((ft) => (
-                <button 
+                <button
                   key={ft.type}
                   onClick={() => addField(ft.type)}
                   className="w-full flex items-center gap-3 p-3 border border-transparent hover:border-ink hover:bg-paper transition-all group rounded-sm"
@@ -101,9 +153,9 @@ export function ExtractionBuilder() {
                 </button>
               ))}
             </div>
-            
+
             <div className="accent-line opacity-5" />
-            
+
             <div className="p-4 bg-intel-blue/5 border border-intel-blue/20 space-y-3 rounded-sm shadow-sm">
               <div className="flex items-center gap-2 text-intel-blue">
                 <Sparkles className="w-3 h-3" />
@@ -130,7 +182,7 @@ export function ExtractionBuilder() {
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-20 cursor-grab active:cursor-grabbing transition-opacity">
                     <GripVertical className="w-4 h-4" />
                   </div>
-                  
+
                   <div className="flex justify-between items-start pl-4 gap-8">
                     <div className="space-y-6 flex-1">
                       <div className="flex items-center gap-4">
@@ -138,15 +190,15 @@ export function ExtractionBuilder() {
                           <span className="text-[8px] font-mono uppercase tracking-tighter text-muted">Type:</span>
                           <span className="text-[10px] font-mono uppercase tracking-tighter font-bold">{field.type}</span>
                         </div>
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           value={field.label}
-                          onChange={(e) => setFields(fields.map(f => f.id === field.id ? {...f, label: e.target.value} : f))}
+                          onChange={(e) => setFields(fields.map(f => f.id === field.id ? { ...f, label: e.target.value } : f))}
                           className="text-3xl font-serif italic outline-none border-b border-transparent focus:border-border transition-all w-full bg-transparent"
                         />
                       </div>
-                      
-                      <textarea 
+
+                      <textarea
                         placeholder="Add instructional notes for reviewers..."
                         className="w-full bg-paper/30 border border-border/50 focus:border-ink p-4 text-sm font-serif italic outline-none transition-all rounded-sm resize-none"
                         rows={2}
@@ -156,7 +208,7 @@ export function ExtractionBuilder() {
                     <div className="flex items-center gap-8 shrink-0 pt-2">
                       <div className="flex flex-col items-end gap-3">
                         <label className="text-[10px] font-mono uppercase tracking-widest text-muted">Field Status</label>
-                        <div 
+                        <div
                           onClick={() => toggleRequired(field.id)}
                           className={cn(
                             "flex items-center gap-2 px-3 py-1.5 border rounded-full cursor-pointer transition-all",
@@ -170,7 +222,7 @@ export function ExtractionBuilder() {
                           )} />
                         </div>
                       </div>
-                      <button 
+                      <button
                         onClick={() => removeField(field.id)}
                         className="p-3 bg-paper border border-border text-muted hover:text-rose-600 hover:border-rose-200 transition-all rounded-full"
                       >

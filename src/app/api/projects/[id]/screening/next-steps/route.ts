@@ -38,54 +38,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             throw new NotFoundError("Project");
         }
 
-        // --- SELF-HEALING BLOCK ---
-        // Fix studies where decisions exist but status is still PENDING or SCREENING
-        // This handles studies affected by the previous status-update bug
-        // and also single-member projects where dual-screening is enabled but no 2nd reviewer will come
-
-        const project = await db.project.findUnique({
-            where: { id: projectId },
-            select: { requireDualScreening: true }
-        });
-        const membersCount = await db.projectMember.count({ where: { projectId } });
-
-        // For single-member projects with dual screening, studies in SCREENING will never progress
-        const shouldAutoFinalize = membersCount === 1 && project?.requireDualScreening;
-
-        const stuckStudies = await db.projectWork.findMany({
-            where: {
-                projectId,
-                phase: currentPhase,
-                status: { in: ["PENDING", "SCREENING"] },
-                decisions: { some: {} }
-            },
-            include: { decisions: true }
-        });
-
-        if (stuckStudies.length > 0) {
-            for (const study of stuckStudies) {
-                if (study.decisions.length > 0) {
-                    const latest = study.decisions[0];
-
-                    // Auto-fix if single-member project, or if consensus reached (2+ decisions that agree)
-                    const shouldFix = shouldAutoFinalize ||
-                        (!project?.requireDualScreening) ||
-                        (study.decisions.length >= 2);
-
-                    if (shouldFix) {
-                        await db.projectWork.update({
-                            where: { id: study.id },
-                            data: {
-                                status: latest.decision === "INCLUDE" ? "INCLUDED" :
-                                    latest.decision === "EXCLUDE" ? "EXCLUDED" : "MAYBE",
-                                finalDecision: latest.decision
-                            }
-                        });
-                    }
-                }
-            }
-        }
-        // --------------------------
 
 
         // 1. Check if user has any pending items in this phase

@@ -27,11 +27,13 @@ import { cn } from "@/lib/utils";
 import { GraphControl } from "./GraphControl";
 import { GraphLegendItem } from "./GraphLegendItem";
 import cytoscape from 'cytoscape';
+// @ts-ignore
 import fcose from 'cytoscape-fcose';
 import CytoscapeComponent from 'react-cytoscapejs';
 import { Button } from "@/components/ui/button";
 
 // Register fcose layout
+// @ts-ignore
 cytoscape.use(fcose);
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -144,11 +146,11 @@ export function CitationGraph() {
       // Fetch the full graph data
       const res = await fetch(`/api/research/graphs/${data.data.id}`, { credentials: "include" });
       const graphRes = await res.json();
-      
+
       // Handle nested graph data structure from API
       // API returns: { success: true, data: { id: ..., data: { nodes: [], edges: [] } } }
       const nestedData = graphRes.data.data || {};
-      
+
       const graphData: GraphData = {
         nodes: nestedData.nodes || [],
         edges: nestedData.edges || [],
@@ -244,11 +246,11 @@ export function CitationGraph() {
   // Handle bibliography import
   const handleBibliographyImport = useCallback(async () => {
     if (!importFile) return;
-    
+
     setIsImporting(true);
     try {
       const content = await importFile.text();
-      
+
       // Parse the file client-side to build a local graph
       const res = await fetch("/api/research/graphs/parse", {
         method: "POST",
@@ -259,15 +261,15 @@ export function CitationGraph() {
           filename: importFile.name,
         }),
       });
-      
+
       if (!res.ok) {
         const errorData = await res.json();
         throw new Error(errorData.error?.message || "Failed to parse bibliography");
       }
-      
+
       const result = await res.json();
       const graphData: GraphData = result.data;
-      
+
       setCurrentGraphData(graphData);
       setElements(transformToCytoscape(graphData));
       setShowImportDialog(false);
@@ -507,18 +509,18 @@ export function CitationGraph() {
                     Visualize your citation network by uploading a bibliography file.
                   </p>
                 </DialogHeader>
-                
+
                 <div className="py-6">
                   {!importFile ? (
                     <div className="group relative">
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent to-paper/20 rounded-xl" />
-                      <label 
-                        htmlFor="bibliography-upload" 
+                      <label
+                        htmlFor="bibliography-upload"
                         className="relative flex flex-col items-center justify-center w-full aspect-[2/1] border border-dashed border-border rounded-xl cursor-pointer hover:border-foreground/40 hover:bg-paper/30 transition-all duration-300"
                       >
                         <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
                           <div className="p-4 bg-paper rounded-full mb-4 group-hover:scale-110 transition-transform duration-300 shadow-sm border border-border">
-                             <Upload className="w-6 h-6 text-foreground/70" />
+                            <Upload className="w-6 h-6 text-foreground/70" />
                           </div>
                           <p className="mb-2 text-sm font-medium text-foreground">
                             <span className="font-serif font-semibold border-b border-foreground/30 pb-0.5">Click to upload</span> <span className="text-muted-foreground font-serif italic">or drag and drop</span>
@@ -527,10 +529,10 @@ export function CitationGraph() {
                             RIS, BibTeX, or CSV
                           </p>
                         </div>
-                        <input 
-                          id="bibliography-upload" 
-                          type="file" 
-                          className="hidden" 
+                        <input
+                          id="bibliography-upload"
+                          type="file"
+                          className="hidden"
                           accept=".ris,.bib,.bibtex,.csv"
                           onChange={(e) => setImportFile(e.target.files?.[0] || null)}
                         />
@@ -539,53 +541,53 @@ export function CitationGraph() {
                   ) : (
                     <div className="relative flex items-center p-4 border border-border rounded-xl bg-paper/30 group animate-in fade-in zoom-in-95 duration-200">
                       <div className="p-3 bg-white border border-border rounded-lg mr-4 shadow-sm">
-                         <FileText className="w-6 h-6 text-foreground/70" />
+                        <FileText className="w-6 h-6 text-foreground/70" />
                       </div>
                       <div className="flex-1 min-w-0">
-                         <p className="text-sm font-semibold text-foreground truncate font-serif">
-                           {importFile.name}
-                         </p>
-                         <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                           {(importFile.size / 1024).toFixed(1)} KB
-                         </p>
+                        <p className="text-sm font-semibold text-foreground truncate font-serif">
+                          {importFile.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                          {(importFile.size / 1024).toFixed(1)} KB
+                        </p>
                       </div>
-                      <button 
-                         onClick={() => setImportFile(null)}
-                         className="p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors ml-2"
-                         aria-label="Remove file"
+                      <button
+                        onClick={() => setImportFile(null)}
+                        className="p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors ml-2"
+                        aria-label="Remove file"
                       >
-                         <XIcon className="w-4 h-4" />
+                        <XIcon className="w-4 h-4" />
                       </button>
                     </div>
                   )}
                 </div>
 
                 <DialogFooter className="sm:justify-between sm:items-center gap-4 border-t border-border pt-4">
-                   <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider hidden sm:block">
-                      Supported formats: .ris, .bib, .csv
-                   </p>
-                   <div className="flex gap-3">
-                      <Button variant="ghost" onClick={() => setShowImportDialog(false)} className="font-serif">
-                         Cancel
-                      </Button>
-                      <Button 
-                        onClick={handleBibliographyImport} 
-                        disabled={!importFile || isImporting} 
-                        className="btn-editorial min-w-[140px]"
-                      >
-                        {isImporting ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-4 h-4 mr-2" />
-                            Generate Graph
-                          </>
-                        )}
-                      </Button>
-                   </div>
+                  <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider hidden sm:block">
+                    Supported formats: .ris, .bib, .csv
+                  </p>
+                  <div className="flex gap-3">
+                    <Button variant="ghost" onClick={() => setShowImportDialog(false)} className="font-serif">
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleBibliographyImport}
+                      disabled={!importFile || isImporting}
+                      className="btn-editorial min-w-[140px]"
+                    >
+                      {isImporting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Generate Graph
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -601,7 +603,7 @@ export function CitationGraph() {
                   stylesheet={stylesheet as any}
                   cy={(cy: cytoscape.Core) => {
                     cyRef.current = cy;
-                    
+
                     cy.on('tap', 'node', (evt: cytoscape.EventObject) => {
                       const node = evt.target;
                       setSelectedNodeData(node.data());

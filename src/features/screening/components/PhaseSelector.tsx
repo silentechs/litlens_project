@@ -7,6 +7,7 @@ import type { ScreeningPhase } from "@/types/screening";
 interface PhaseSelectorProps {
     currentPhase: ScreeningPhase;
     onPhaseChange: (phase: ScreeningPhase) => void;
+    enabledPhases?: ScreeningPhase[];
     className?: string;
 }
 
@@ -16,7 +17,7 @@ const PHASES: { value: ScreeningPhase; label: string }[] = [
     { value: "FINAL", label: "Final" },
 ];
 
-export function PhaseSelector({ currentPhase, onPhaseChange, className }: PhaseSelectorProps) {
+export function PhaseSelector({ currentPhase, onPhaseChange, enabledPhases, className }: PhaseSelectorProps) {
     return (
         <div className={cn("relative flex p-1 bg-white border border-border/40 rounded-sm shadow-sm", className)}>
             {/* Floating active indicator */}
@@ -40,8 +41,10 @@ export function PhaseSelector({ currentPhase, onPhaseChange, className }: PhaseS
                         onClick={() => onPhaseChange(phase.value)}
                         className={cn(
                             "relative z-10 flex-1 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.2em] transition-colors duration-300",
-                            isActive ? "text-paper font-black" : "text-muted hover:text-ink font-bold"
+                            isActive ? "text-paper font-black" : "text-muted hover:text-ink font-bold",
+                            enabledPhases && !enabledPhases.includes(phase.value) && "opacity-30 cursor-not-allowed hover:text-muted"
                         )}
+                        disabled={enabledPhases && !enabledPhases.includes(phase.value)}
                     >
                         {phase.label}
                     </button>

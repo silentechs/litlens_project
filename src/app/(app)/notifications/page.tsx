@@ -20,15 +20,10 @@ interface NotificationAPIResponse {
     total: number;
 }
 
+import { useNotifications } from "@/features/notifications/api/queries";
+
 export default function NotificationsPage() {
-    const { data, isLoading } = useQuery<NotificationAPIResponse>({
-        queryKey: ["notifications"],
-        queryFn: async () => {
-            const res = await fetch("/api/notifications");
-            if (!res.ok) throw new Error("Failed to fetch notifications");
-            return res.json();
-        },
-    });
+    const { data, isLoading } = useNotifications();
 
     const notifications = data?.items || [];
 

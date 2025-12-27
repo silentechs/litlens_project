@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { screeningApi } from "@/lib/api-client";
+import { screeningApi, conflictsApi } from "@/lib/api-client";
 import type {
   ScreeningQueueItem,
   ScreeningDecisionInput,
@@ -9,7 +9,7 @@ import type {
   ConflictResolutionInput,
   ScreeningStats,
   ScreeningPhase,
-} from "@/types/screening";
+} from "@/lib/api-client";
 import type { ApiSuccessResponse, PaginationMeta } from "@/types/api";
 
 // ============== API CLIENT FUNCTIONS ==============
@@ -147,7 +147,7 @@ export function useConflicts(
 ) {
   return useQuery({
     queryKey: screeningKeys.conflicts(projectId!),
-    queryFn: () => fetchConflicts(projectId!, params),
+    queryFn: () => conflictsApi.list(projectId!, params),
     enabled: !!projectId,
     staleTime: 30 * 1000, // 30 seconds
   });
@@ -162,6 +162,31 @@ export function useScreeningNextSteps(
     queryFn: () => screeningApi.getNextSteps(projectId!, phase),
     enabled: !!projectId,
     staleTime: 60 * 1000, // 1 minute
+  });
+}
+
+export function useScreeningAnalytics(projectId: string | undefined, include?: string[]) {
+  return useQuery({
+    queryKey: [...screeningKeys.all, "analytics", projectId, include] as const,
+    queryFn: async () => {
+      const searchParams = new URLSearchParams();
+      if (include) searchParams.set("include", include.join(","));
+
+      const response = await fetch(
+        `/api/projects/${projectId}/screening/analytics?${searchParams.toString()}`,
+        { credentials: 'include' }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || "Failed to fetch analytics");
+      }
+
+      const data: ApiSuccessResponse<any> = await response.json();
+      return data.data;
+    },
+    enabled: !!projectId,
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 }
 
@@ -188,7 +213,7 @@ export function useResolveConflict(projectId: string) {
 
   return useMutation({
     mutationFn: ({ conflictId, ...input }: ConflictResolutionInput & { conflictId: string }) =>
-      resolveConflict(projectId, conflictId, input),
+      conflictsApi.resolve(projectId, conflictId, input),
     onSuccess: () => {
       // Invalidate conflicts
       queryClient.invalidateQueries({ queryKey: screeningKeys.conflicts(projectId) });

@@ -325,32 +325,94 @@ export const importApi = {
 };
 
 // ---------- Screening ----------
+export interface WorkAuthor {
+  name: string;
+  orcid?: string | null;
+  affiliation?: string | null;
+}
+
 export interface ScreeningQueueItem {
-  id: string;
+  id: string; // ProjectWork ID
   workId: string;
   status: string;
   phase: string;
+
+  // Work details
   title: string;
-  authors: Array<{ name: string }>;
-  abstract?: string;
-  journal?: string;
-  year?: number;
-  doi?: string;
-  aiSuggestion?: string;
-  aiConfidence?: number;
-  aiReasoning?: string;
-  userDecision?: string;
+  authors: WorkAuthor[];
+  abstract: string | null;
+  journal: string | null;
+  year: number | null;
+  doi: string | null;
+
+  // AI assistance
+  aiSuggestion?: string | null;
+  aiConfidence?: number | null;
+  aiReasoning?: string | null;
+
+  // User's previous decision (if any)
+  userDecision?: string | null;
+
+  // Metadata
+  importSource: string | null;
   createdAt: string;
 }
 
-export interface ScreeningDecision {
+export type ScreeningPhase = "TITLE_ABSTRACT" | "FULL_TEXT" | "FINAL";
+export type ScreeningDecision = "INCLUDE" | "EXCLUDE" | "MAYBE";
+
+export interface ScreeningDecisionInput {
   projectWorkId: string;
-  phase: string;
-  decision: "INCLUDE" | "EXCLUDE" | "MAYBE";
+  phase: ScreeningPhase | string;
+  decision: ScreeningDecision;
   reasoning?: string;
   exclusionReason?: string;
+  confidence?: number;
   timeSpentMs?: number;
   followedAi?: boolean;
+}
+
+export interface ScreeningStats {
+  phase: ScreeningPhase | string;
+  total: number;
+  pending: number;
+  screened: number;
+  included: number;
+  excluded: number;
+  maybe: number;
+  conflicts: number;
+  progress: number;
+}
+
+export interface ScreeningNextSteps {
+  completed: boolean;
+  totalPending: number;
+  conflicts: number;
+  remainingReviewers: number;
+  phaseStats: {
+    total: number;
+    included: number;
+    excluded: number;
+    maybe: number;
+  };
+  canMoveToNextPhase: boolean;
+  nextPhase?: ScreeningPhase | string;
+}
+
+export interface ScreeningBatchParams {
+  operation: "move_phase" | "bulk_decision" | "assign" | "reset" | "apply_ai";
+  projectWorkIds: string[];
+  targetPhase?: ScreeningPhase;
+  decision?: ScreeningDecision;
+  reasoning?: string;
+  assigneeId?: string;
+  aiConfidenceThreshold?: number;
+}
+
+export interface ScreeningBatchResponse {
+  processed: number;
+  failed: number;
+  details?: any;
 }
 
 export const screeningApi = {
@@ -361,22 +423,11 @@ export const screeningApi = {
       status: params?.status,
     }),
 
-  submitDecision: (projectId: string, decision: ScreeningDecision) =>
+  submitDecision: (projectId: string, decision: ScreeningDecisionInput) =>
     api.post<void>(`/api/projects/${projectId}/screening/decisions`, decision),
 
-  batchDecision: (projectId: string, data: { projectWorkIds: string[]; phase: string; decision: string }) =>
-    api.post<{ processed: number; failed: number }>(`/api/projects/${projectId}/screening/batch`, data),
-
   getProgress: (projectId: string) =>
-    api.get<{
-      total: number;
-      included: number;
-      excluded: number;
-      maybe: number;
-      pending: number;
-      conflicts: number;
-      phases: Record<string, { total: number; screened: number; progress: number }>;
-    }>(`/api/projects/${projectId}/screening/progress`),
+    api.get<ScreeningStats>(`/api/projects/${projectId}/screening/progress`),
 
   getAiSuggestion: (projectId: string, projectWorkId: string) =>
     api.get<{ suggestion: string; confidence: number; reasoning: string }>(
@@ -385,13 +436,13 @@ export const screeningApi = {
     ),
 
   getNextSteps: (projectId: string, phase?: string) =>
-    api.get<import("@/types/screening").ScreeningNextSteps>(
+    api.get<ScreeningNextSteps>(
       `/api/projects/${projectId}/screening/next-steps`,
       { phase }
     ),
 
-  batchOperation: (projectId: string, data: { operation: string; projectWorkIds: string[]; targetPhase?: string; decision?: string }) =>
-    api.post<any>(`/api/projects/${projectId}/screening/batch`, data),
+  batch: (projectId: string, data: ScreeningBatchParams) =>
+    api.post<ScreeningBatchResponse>(`/api/projects/${projectId}/screening/batch`, data),
 };
 
 // ---------- Conflicts ----------
@@ -400,25 +451,38 @@ export interface Conflict {
   projectId: string;
   projectWorkId: string;
   phase: string;
-  status: string;
+  status: "PENDING" | "IN_DISCUSSION" | "RESOLVED";
   decisions: Array<{
     reviewerId: string;
-    reviewerName?: string;
+    reviewerName: string | null;
+    reviewerImage: string | null;
     decision: string;
-    reasoning?: string;
+    reasoning: string | null;
   }>;
   work?: {
     title: string;
     authors: Array<{ name: string }>;
-    year?: number;
+    year: number;
+    abstract?: string;
   };
   resolution?: {
+    id: string;
     finalDecision: string;
-    reasoning: string;
-    resolver: { id: string; name: string };
+    reasoning: string | null;
+    resolver: {
+      id: string;
+      name: string;
+      image: string | null;
+    };
     createdAt: string;
   };
   createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface ConflictResolutionInput {
+  finalDecision: "INCLUDE" | "EXCLUDE" | "MAYBE";
+  reasoning?: string;
 }
 
 export const conflictsApi = {
@@ -431,17 +495,33 @@ export const conflictsApi = {
   get: (projectId: string, conflictId: string) =>
     api.get<Conflict>(`/api/projects/${projectId}/conflicts/${conflictId}`),
 
-  resolve: (projectId: string, conflictId: string, data: { finalDecision: string; reasoning: string }) =>
-    api.patch<Conflict>(`/api/projects/${projectId}/conflicts/${conflictId}`, {
-      action: "resolve",
-      ...data,
-    }),
+  resolve: (projectId: string, conflictId: string, data: ConflictResolutionInput) =>
+    api.post<void>(`/api/projects/${projectId}/conflicts/${conflictId}/resolve`, data),
+};
 
-  escalate: (projectId: string, conflictId: string, data: { reason: string }) =>
-    api.patch<Conflict>(`/api/projects/${projectId}/conflicts/${conflictId}`, {
-      action: "escalate",
-      ...data,
-    }),
+export interface ExportParams {
+  format: "csv" | "excel" | "ris" | "json";
+  includeScreeningData?: boolean;
+  includeExtractionData?: boolean;
+  includeQualityAssessments?: boolean;
+  studyFilter?: "all" | "included" | "excluded" | "pending";
+}
+
+export const exportApi = {
+  exportStudies: (projectId: string, params: ExportParams) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set("format", params.format);
+    if (params.includeScreeningData !== undefined) searchParams.set("includeScreeningData", String(params.includeScreeningData));
+    if (params.includeExtractionData !== undefined) searchParams.set("includeExtractionData", String(params.includeExtractionData));
+    if (params.includeQualityAssessments !== undefined) searchParams.set("includeQualityAssessments", String(params.includeQualityAssessments));
+    if (params.studyFilter) searchParams.set("studyFilter", params.studyFilter);
+
+    // Redirect to the download URL
+    window.location.href = `/api/projects/${projectId}/export?${searchParams.toString()}`;
+  },
+
+  getPrismaFlow: (projectId: string) =>
+    api.post<{ success: boolean; data: any }>(`/api/projects/${projectId}/export`, { type: "prisma" }),
 };
 
 // ---------- Extraction ----------
@@ -654,12 +734,88 @@ export interface Notification {
 }
 
 export const notificationsApi = {
-  list: (params?: { unread?: boolean; projectId?: string }) =>
-    api.get<Notification[]>("/api/notifications", params),
+  list: (params?: { unread?: boolean; projectId?: string; page?: number; limit?: number }) =>
+    api.get<PaginatedResponse<Notification>>("/api/notifications", params),
 
   markRead: (notificationId: string) =>
     api.patch<Notification>(`/api/notifications/${notificationId}`, { isRead: true }),
 
   markAllRead: () => api.post<void>("/api/notifications/read-all"),
+};
+
+// ---------- Research Alerts ----------
+export interface ResearchAlert {
+  id: string;
+  name: string;
+  description: string | null;
+  alertType: "NEW_PUBLICATION" | "CITATION_UPDATE" | "AUTHOR_ACTIVITY" | "KEYWORD_TREND" | "CUSTOM_QUERY";
+  frequency: "REAL_TIME" | "HOURLY" | "DAILY" | "WEEKLY";
+  isActive: boolean;
+  lastTriggeredAt: string | null;
+  discoveryCount: number;
+  unreadCount: number;
+}
+
+export interface AlertStats {
+  totalAlerts: number;
+  activeAlerts: number;
+  totalDiscoveries: number;
+  unreadDiscoveries: number;
+  lastTriggered?: string;
+}
+
+export interface CreateAlertInput {
+  name: string;
+  description?: string;
+  alertType: string;
+  searchQuery?: string;
+  keywords?: string[];
+  authors?: string[];
+  journals?: string[];
+  frequency?: string;
+  emailEnabled?: boolean;
+  inAppEnabled?: boolean;
+  projectId?: string;
+}
+
+export const alertsApi = {
+  list: (params?: { activeOnly?: boolean; projectId?: string }) =>
+    api.get<ResearchAlert[]>("/api/research/alerts", params),
+
+  getStats: () => api.get<AlertStats>("/api/research/alerts", { includeStats: "true" }),
+
+  create: (data: CreateAlertInput) => api.post<ResearchAlert>("/api/research/alerts", data),
+
+  update: (id: string, data: Partial<CreateAlertInput> & { isActive?: boolean }) =>
+    api.patch<ResearchAlert>(`/api/research/alerts/${id}`, data),
+
+  delete: (id: string) => api.delete<void>(`/api/research/alerts/${id}`),
+
+  markRead: (id: string, discoveryIds?: string[]) =>
+    api.post<void>(`/api/research/alerts/${id}/read`, { discoveryIds }),
+};
+
+// ---------- User ----------
+export interface UserPreferences {
+  id: string;
+  userId: string;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  inAppNotifications: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  quietHoursDays: string[];
+  alertDigestFrequency: string;
+  theme: string;
+  sidebarCollapsed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const userApi = {
+  getPreferences: () => api.get<UserPreferences>("/api/user/preferences"),
+  updatePreferences: (data: Partial<UserPreferences>) =>
+    api.patch<UserPreferences>("/api/user/preferences", data),
 };
 

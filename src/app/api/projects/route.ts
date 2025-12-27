@@ -16,13 +16,12 @@ import {
   paginationSchema
 } from "@/lib/validators";
 
-// GET /api/projects - List user's projects
+import { authenticateRequest } from "@/lib/middleware/auth-check";
+
+// GET /api/projects - List projects
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      throw new UnauthorizedError();
-    }
+    const identity = await authenticateRequest(request);
 
     const searchParams = request.nextUrl.searchParams;
 
@@ -41,13 +40,17 @@ export async function GET(request: NextRequest) {
     });
 
     // Build where clause
-    const where: Record<string, unknown> = {
-      members: {
+    const where: Record<string, any> = {};
+
+    if (identity.type === "session") {
+      where.members = {
         some: {
-          userId: session.user.id,
+          userId: identity.userId,
         },
-      },
-    };
+      };
+    } else if (identity.type === "api_key") {
+      where.organizationId = identity.organizationId;
+    }
 
     // Apply filters
     if (filters.status) {
@@ -103,7 +106,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Fetch progress stats for these projects
-    const projectIds = projects.map((p: { id: string }) => p.id);
+    const projectIds = projects.map((p) => p.id);
     const progressStats = await db.projectWork.groupBy({
       by: ['projectId', 'status'],
       where: {
@@ -112,59 +115,15 @@ export async function GET(request: NextRequest) {
       _count: true
     });
 
-    // Transform response and apply self-healing for stuck statuses
-    const items = await Promise.all(projects.map(async (project) => {
-      // --- SELF-HEALING BLOCK ---
-      // Fix studies where decisions exist but status is still PENDING
-      // This ensures progress is reported correctly even if individual project pages haven't been visited
-      const stuckStudies = await db.projectWork.findMany({
-        where: {
-          projectId: project.id,
-          status: "PENDING",
-          decisions: { some: {} }
-        },
-        include: { decisions: true }
-      });
-
-      if (stuckStudies.length > 0) {
-        const membersCount = await db.projectMember.count({ where: { projectId: project.id } });
-
-        for (const study of stuckStudies) {
-          if (study.decisions.length > 0) {
-            const latest = study.decisions[0];
-            // Only auto-fix if it's safe (single-reviewer mode, 1 person project, or multiple decisions exist)
-            if (!project.requireDualScreening || membersCount === 1 || study.decisions.length >= 2) {
-              await db.projectWork.update({
-                where: { id: study.id },
-                data: {
-                  status: latest.decision === "INCLUDE" ? "INCLUDED" :
-                    latest.decision === "EXCLUDE" ? "EXCLUDED" : "MAYBE",
-                  finalDecision: latest.decision
-                }
-              });
-            }
-          }
-        }
-
-        // Refresh progress stats for this project since we updated some statuses
-        const updatedStats = await db.projectWork.groupBy({
-          by: ['status'],
-          where: { projectId: project.id },
-          _count: true
-        });
-
-        // Update the local stats for this project
-        progressStats.push(...updatedStats.map((s) => ({ ...s, projectId: project.id })));
-      }
-      // --------------------------
-
+    // Transform response
+    const items = projects.map((project) => {
       // Calculate real progress
       const stats = progressStats.filter((s) => s.projectId === project.id);
       const totalWorks = project._count.projectWorks;
 
       const completedCount = stats.reduce((acc: number, curr) => {
         if (["INCLUDED", "EXCLUDED", "MAYBE"].includes(curr.status)) {
-          return acc + curr._count;
+          return acc + (curr._count as number);
         }
         return acc;
       }, 0);
@@ -193,31 +152,28 @@ export async function GET(request: NextRequest) {
         lastActivity: project.updatedAt.toISOString(),
         pendingConflicts: project._count.conflicts,
       };
-    }));
+    });
 
     return paginated(items, total, pagination.page, pagination.limit);
   } catch (error) {
     return handleApiError(error);
   }
 }
-
 // POST /api/projects - Create a new project
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      throw new UnauthorizedError();
-    }
+    const identity = await authenticateRequest(request);
 
-    // Verify user exists in database (important for JWT auth)
-    const user = await db.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true },
-    });
+    // Verify user exists/has access (if session)
+    if (identity.type === "session") {
+      const user = await db.user.findUnique({
+        where: { id: identity.userId },
+        select: { id: true },
+      });
 
-    if (!user) {
-      console.error("[API] User from session not found in DB:", session.user.id);
-      throw new UnauthorizedError("User account not found. Please sign out and sign in again.");
+      if (!user) {
+        throw new UnauthorizedError("User account not found.");
+      }
     }
 
     const body = await request.json();
@@ -231,12 +187,13 @@ export async function POST(request: NextRequest) {
 
     const slug = await generateUniqueSlug(baseSlug);
 
-    // Create project with owner membership
+    // Create project
     const project = await db.project.create({
       data: {
         title: data.title,
         description: data.description,
         slug,
+        organizationId: identity.organizationId,
         population: data.population,
         intervention: data.intervention,
         comparison: data.comparison,
@@ -244,12 +201,12 @@ export async function POST(request: NextRequest) {
         isPublic: data.isPublic,
         blindScreening: data.blindScreening,
         requireDualScreening: data.requireDualScreening,
-        members: {
+        members: identity.type === "session" ? {
           create: {
-            userId: session.user.id,
+            userId: identity.userId!,
             role: "OWNER",
           },
-        },
+        } : undefined,
       },
       include: {
         members: {
@@ -273,16 +230,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Log activity
-    await db.activity.create({
-      data: {
-        userId: session.user.id,
-        projectId: project.id,
-        type: "PROJECT_CREATED",
-        description: `Created project "${project.title}"`,
-        metadata: {},
-      },
-    });
+    // Log activity (only if session)
+    if (identity.type === "session") {
+      await db.activity.create({
+        data: {
+          userId: identity.userId!,
+          projectId: project.id,
+          type: "PROJECT_CREATED",
+          description: `Created project "${project.title}"`,
+          metadata: {},
+        },
+      });
+    }
 
     return created(project);
   } catch (error) {

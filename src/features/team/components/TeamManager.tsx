@@ -52,8 +52,18 @@ interface TeamMember {
   };
 }
 
+interface ProjectInvitation {
+  id: string;
+  email: string;
+  role: 'OWNER' | 'LEAD' | 'REVIEWER' | 'OBSERVER';
+  token: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
 interface MembersResponse {
   members: TeamMember[];
+  invitations: ProjectInvitation[];
   total: number;
 }
 
@@ -67,7 +77,8 @@ export function TeamManager() {
     queryFn: async () => {
       const res = await fetch(`/api/projects/${projectId}/members`);
       if (!res.ok) throw new Error("Failed to fetch team members");
-      return res.json();
+      const json = await res.json();
+      return json.data;
     },
     enabled: !!projectId,
   });
@@ -94,28 +105,71 @@ export function TeamManager() {
         <div className="accent-line" />
 
         <div className="editorial-grid gap-12">
-          {/* Active Team */}
-          <main className="col-span-12 md:col-span-8 space-y-8">
-            <div className="flex justify-between items-center border-b border-border pb-4">
-              <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">
-                {isLoading ? "Loading Scholars..." : `Active Members (${teamMembers.length})`}
-              </h3>
-              <div className="relative group">
-                <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 text-muted group-focus-within:text-ink transition-colors" />
-                <input type="text" placeholder="Find member..." className="bg-transparent pl-6 py-1 outline-none text-xs font-serif italic placeholder:text-muted/40" />
+          <main className="col-span-12 md:col-span-8 space-y-12">
+            {/* Pending Invitations */}
+            {data?.invitations && data.invitations.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center border-b border-border pb-4">
+                  <h3 className="font-mono text-[10px] uppercase tracking-widest text-intel-blue flex items-center gap-2">
+                    <UserPlus className="w-3 h-3" />
+                    Pending Invitations ({data.invitations.length})
+                  </h3>
+                </div>
+                <div className="space-y-3">
+                  {data.invitations.map((invite) => (
+                    <div key={invite.id} className="group bg-paper border border-border/50 p-4 flex items-center justify-between opacity-80 hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-white border border-border border-dashed flex items-center justify-center text-muted">
+                          <Mail className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <p className="font-serif italic text-lg text-ink">{invite.email}</p>
+                          <p className="text-[10px] font-mono uppercase text-muted tracking-wider">
+                            Invited {formatDistanceToNow(new Date(invite.createdAt))} ago
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="text-right">
+                          <div className="text-[9px] font-mono uppercase tracking-widest text-muted mb-1">Role</div>
+                          <div className="font-serif italic font-bold text-sm text-intel-blue">{invite.role}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[9px] font-mono uppercase tracking-widest text-muted mb-1">Expires</div>
+                          <div className="font-serif italic text-sm text-rose-500/70">{formatDistanceToNow(new Date(invite.expiresAt), { addSuffix: true })}</div>
+                        </div>
+                        {/* Placeholder for revoke action if needed later */}
+                        <div className="w-8" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="space-y-4">
-              {isLoading ? (
-                <div className="p-12 text-center font-serif italic text-muted">Retrieving project roster...</div>
-              ) : teamMembers.length === 0 ? (
-                <div className="p-12 text-center font-serif italic text-muted">No members found in this collective.</div>
-              ) : (
-                teamMembers.map((member) => (
-                  <MemberCard key={member.id} member={member} projectId={projectId} />
-                ))
-              )}
+            {/* Active Team */}
+            <div className="space-y-8">
+              <div className="flex justify-between items-center border-b border-border pb-4">
+                <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">
+                  {isLoading ? "Loading Scholars..." : `Active Members (${teamMembers.length})`}
+                </h3>
+                <div className="relative group">
+                  <Search className="absolute left-0 top-1/2 -translate-y-1/2 w-3 h-3 text-muted group-focus-within:text-ink transition-colors" />
+                  <input type="text" placeholder="Find member..." className="bg-transparent pl-6 py-1 outline-none text-xs font-serif italic placeholder:text-muted/40" />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {isLoading ? (
+                  <div className="p-12 text-center font-serif italic text-muted">Retrieving project roster...</div>
+                ) : teamMembers.length === 0 ? (
+                  <div className="p-12 text-center font-serif italic text-muted">No active members in this collective.</div>
+                ) : (
+                  teamMembers.map((member) => (
+                    <MemberCard key={member.id} member={member} projectId={projectId} />
+                  ))
+                )}
+              </div>
             </div>
           </main>
 

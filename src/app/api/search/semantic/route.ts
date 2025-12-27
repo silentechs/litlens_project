@@ -79,14 +79,14 @@ export async function GET(request: NextRequest) {
 
     // Perform semantic-like search using keyword extraction and matching
     // In production, this would use actual embeddings
-    const results = semanticMatch(query, works, limit, threshold);
+    const results = semanticMatch(query, works as any, limit, threshold);
 
     return success({
       items: results,
       total: results.length,
       sources: ["semantic"],
       searchMode: "keyword-semantic", // Indicate fallback mode
-      note: "Using keyword-based semantic approximation. Full vector search coming soon.",
+      note: "Experimental: Using keyword-based semantic approximation.",
     });
   } catch (error) {
     return handleApiError(error);
@@ -193,13 +193,13 @@ function expandQueryTerms(terms: Set<string>): Set<string> {
     significant: ["substantial", "notable", "meaningful", "important"],
     increase: ["rise", "elevation", "growth", "improvement"],
     decrease: ["reduction", "decline", "drop", "lowering"],
-    
+
     // Research methodology
     randomized: ["random", "randomised", "rct"],
     systematic: ["comprehensive", "methodical"],
     metaanalysis: ["meta-analysis", "pooled", "aggregate"],
     cohort: ["longitudinal", "prospective", "retrospective"],
-    
+
     // General academic
     analysis: ["examination", "assessment", "evaluation", "review"],
     method: ["approach", "technique", "procedure", "methodology"],

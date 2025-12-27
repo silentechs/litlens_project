@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useScreeningNextSteps, useAdvancePhase } from "@/features/screening/api/queries";
-import { Loader2, ArrowRight, AlertTriangle } from "lucide-react";
+import { useScreeningStore } from "@/stores/screening-store";
+import { Loader2, ArrowRight, AlertTriangle, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface PhaseManagerProps {
@@ -10,7 +11,8 @@ interface PhaseManagerProps {
 }
 
 export function PhaseManager({ projectId }: PhaseManagerProps) {
-    const { data: nextSteps, isLoading, refetch } = useScreeningNextSteps(projectId);
+    const { currentPhase } = useScreeningStore();
+    const { data: nextSteps, isLoading, refetch } = useScreeningNextSteps(projectId, currentPhase);
     const advancePhase = useAdvancePhase(projectId);
     const [showConfirm, setShowConfirm] = useState(false);
 
@@ -24,9 +26,8 @@ export function PhaseManager({ projectId }: PhaseManagerProps) {
         if (!nextSteps.nextPhase) return;
 
         try {
-            // Use the dedicated advance-phase API endpoint
             await advancePhase.mutateAsync({
-                currentPhase: "TITLE_ABSTRACT" // TODO: Get actual current phase from context
+                currentPhase
             });
             setShowConfirm(false);
             refetch();
@@ -77,8 +78,27 @@ export function PhaseManager({ projectId }: PhaseManagerProps) {
                     Move to {nextSteps.nextPhase} <ArrowRight className="w-4 h-4" />
                 </button>
             ) : (
-                <div className="w-full p-4 bg-paper text-center border border-dashed border-border text-muted text-sm font-serif italic">
-                    Complete screening and resolve conflicts to proceed.
+                <div className="w-full p-4 bg-paper border border-dashed border-border space-y-2">
+                    <p className="text-muted text-sm font-serif italic text-center">
+                        Phase advancement is locked.
+                    </p>
+                    <ul className="text-[10px] font-mono uppercase tracking-widest text-rose-500 space-y-1">
+                        {nextSteps.totalPending > 0 && (
+                            <li className="flex items-center gap-2">
+                                <X className="w-3 h-3" /> {nextSteps.totalPending} items pending your review
+                            </li>
+                        )}
+                        {nextSteps.remainingReviewers > 0 && (
+                            <li className="flex items-center gap-2">
+                                <X className="w-3 h-3" /> Wait for {nextSteps.remainingReviewers} other reviewers
+                            </li>
+                        )}
+                        {nextSteps.conflicts > 0 && (
+                            <li className="flex items-center gap-2">
+                                <X className="w-3 h-3" /> {nextSteps.conflicts} unresolved conflicts
+                            </li>
+                        )}
+                    </ul>
                 </div>
             )}
 

@@ -1,4 +1,5 @@
 "use client";
+// Force rebuild
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -8,7 +9,6 @@ import {
   Brain,
   Search,
   Library,
-  Settings,
   Menu,
   X,
   Command,
@@ -16,18 +16,31 @@ import {
   Users,
   Database,
   LineChart,
+
   FileText,
   Bell,
   LogOut,
   User,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  Radio,
+  Lock,
+  Filter,
+  AlertTriangle,
+  Layers,
+  FileCheck,
+  Copy,
+  Shield,
+  Workflow,
+  CheckCircle,
+  Settings as SettingsIcon
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useSession, signOut } from "next-auth/react";
 import { useAppStore } from "@/stores/app-store";
 import { cn } from "@/lib/utils";
 import { useSSE } from "@/hooks/use-sse";
+import { ExportMenu } from "@/features/projects/components/ExportMenu";
 
 function NavItem({
   icon,
@@ -36,7 +49,8 @@ function NavItem({
   active,
   color,
   href,
-  onClick
+  onClick,
+  badge
 }: {
   icon: React.ReactNode,
   label: string,
@@ -44,26 +58,45 @@ function NavItem({
   active?: boolean,
   color?: string,
   href: string,
-  onClick?: () => void
+  onClick?: () => void,
+  badge?: number | string
 }) {
   return (
     <Link
       href={href || "/dashboard"}
       onClick={onClick}
       className={cn(
-        "w-full flex items-center p-2 rounded-md transition-all group outline-none",
+        "w-full flex items-center p-2 rounded-md transition-all group outline-none relative",
         active ? "bg-paper text-ink shadow-sm border border-border/50" : "text-muted hover:text-ink hover:bg-paper/50",
         color === 'blue' && active && "text-intel-blue bg-intel-blue/5 border-intel-blue/20"
       )}
     >
       <span className={cn(
+        "flex items-center justify-center w-5 h-5",
         active ? "text-ink" : "text-muted group-hover:text-ink transition-colors",
         color === 'blue' && (active ? "text-intel-blue" : "group-hover:text-intel-blue")
       )}>
         {icon}
       </span>
-      {isOpen && <span className="ml-3 font-serif italic text-lg leading-none">{label}</span>}
+      {isOpen && (
+        <span className="ml-3 font-serif italic text-lg leading-none flex-1 truncate">{label}</span>
+      )}
+      {isOpen && badge && (
+        <span className="text-[10px] font-mono bg-ink/10 text-ink px-1.5 py-0.5 rounded-full ml-2">
+          {badge}
+        </span>
+      )}
     </Link>
+  );
+}
+
+function NavSection({ label, isOpen }: { label: string, isOpen: boolean }) {
+  if (!isOpen) return <div className="h-px bg-border/50 my-2 mx-2" />;
+
+  return (
+    <div className="px-2 mt-4 mb-2">
+      <p className="text-[10px] font-mono uppercase tracking-widest text-muted/60 font-bold">{label}</p>
+    </div>
   );
 }
 
@@ -74,20 +107,79 @@ function OpsNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () => 
   // If no project is selected, project-specific links go to the projects list
   const projectBaseUrl = currentProjectId ? `/project/${currentProjectId}` : '/projects';
 
+  // Global Context (No Project Selected)
+  if (!currentProjectId) {
+    return (
+      <>
+        <NavItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" isOpen={isOpen} active={pathname === '/dashboard'} href="/dashboard" onClick={onItemClick} />
+        <NavItem icon={<ClipboardList className="w-5 h-5" />} label="All Projects" isOpen={isOpen} active={pathname === '/projects'} href="/projects" onClick={onItemClick} />
+        <NavItem icon={<Users className="w-5 h-5" />} label="Team" isOpen={isOpen} active={pathname === '/team'} href="/team" onClick={onItemClick} />
+        <NavItem icon={<LineChart className="w-5 h-5" />} label="Analytics" isOpen={isOpen} active={pathname === '/analytics'} href="/analytics" onClick={onItemClick} />
+      </>
+    );
+  }
+
+  // Project Context
   return (
     <>
-      <NavItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" isOpen={isOpen} active={pathname === '/dashboard'} href="/dashboard" onClick={onItemClick} />
+      <NavItem icon={<LayoutDashboard className="w-5 h-5" />} label="Overview" isOpen={isOpen} active={pathname === projectBaseUrl} href={projectBaseUrl} onClick={onItemClick} />
+
+      <NavSection label="Workflow" isOpen={isOpen} />
+
       <NavItem
-        icon={<ClipboardList className="w-5 h-5" />}
-        label="Projects"
+        icon={<Database className="w-5 h-5" />}
+        label="Import"
         isOpen={isOpen}
-        active={pathname === '/projects' || (pathname.includes('/project') && !pathname.includes('/import') && !pathname.includes('/team') && !pathname.includes('/analytics'))}
-        href="/projects"
+        active={pathname.includes('/import')}
+        href={`${projectBaseUrl}/import`}
         onClick={onItemClick}
       />
-      <NavItem icon={<Database className="w-5 h-5" />} label="Import" isOpen={isOpen} active={pathname.includes('/import')} href={currentProjectId ? `${projectBaseUrl}/import` : '/projects'} onClick={onItemClick} />
-      <NavItem icon={<Users className="w-5 h-5" />} label="Team" isOpen={isOpen} active={pathname.includes('/team')} href={currentProjectId ? `${projectBaseUrl}/team` : '/projects'} onClick={onItemClick} />
-      <NavItem icon={<LineChart className="w-5 h-5" />} label="Analytics" isOpen={isOpen} active={pathname.includes('/analytics')} href={currentProjectId ? `${projectBaseUrl}/analytics` : '/projects'} onClick={onItemClick} />
+      <NavItem
+        icon={<Copy className="w-5 h-5" />}
+        label="Duplicates"
+        isOpen={isOpen}
+        active={pathname.includes('/duplicates')}
+        href={`${projectBaseUrl}/duplicates`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<Filter className="w-5 h-5" />}
+        label="Screening"
+        isOpen={isOpen}
+        active={pathname.includes('/screening')}
+        href={`${projectBaseUrl}/screening`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<AlertTriangle className="w-5 h-5" />}
+        label="Conflicts"
+        isOpen={isOpen}
+        active={pathname.includes('/conflicts')}
+        href={`${projectBaseUrl}/conflicts`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<Layers className="w-5 h-5" />}
+        label="Extraction"
+        isOpen={isOpen}
+        active={pathname.includes('/extraction')}
+        href={`${projectBaseUrl}/extraction`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<FileCheck className="w-5 h-5" />}
+        label="Quality"
+        isOpen={isOpen}
+        active={pathname.includes('/quality')}
+        href={`${projectBaseUrl}/quality`}
+        onClick={onItemClick}
+      />
+
+      <NavSection label="Management" isOpen={isOpen} />
+
+      <NavItem icon={<Users className="w-5 h-5" />} label="Team" isOpen={isOpen} active={pathname.includes('/team')} href={`${projectBaseUrl}/team`} onClick={onItemClick} />
+      <NavItem icon={<LineChart className="w-5 h-5" />} label="Analytics" isOpen={isOpen} active={pathname.includes('/analytics')} href={`${projectBaseUrl}/analytics`} onClick={onItemClick} />
+      <NavItem icon={<SettingsIcon className="w-5 h-5" />} label="Settings" isOpen={isOpen} active={pathname.includes('/settings')} href={`${projectBaseUrl}/settings`} onClick={onItemClick} />
     </>
   );
 }
@@ -97,7 +189,10 @@ function IntelNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () =
   return (
     <>
       <NavItem icon={<Brain className="w-5 h-5" />} label="Intelligence" isOpen={isOpen} active={pathname === '/dashboard'} href="/dashboard" color="blue" onClick={onItemClick} />
+      <NavSection label="Exploration" isOpen={isOpen} />
       <NavItem icon={<Search className="w-5 h-5" />} label="Discover" isOpen={isOpen} active={pathname.includes('/discover')} href="/discover" color="blue" onClick={onItemClick} />
+      <NavItem icon={<Radio className="w-5 h-5" />} label="Alerts" isOpen={isOpen} active={pathname.includes('/alerts')} href="/alerts" color="blue" onClick={onItemClick} />
+      <NavSection label="Assets" isOpen={isOpen} />
       <NavItem icon={<Library className="w-5 h-5" />} label="My Library" isOpen={isOpen} active={pathname.includes('/library')} href="/library" color="blue" onClick={onItemClick} />
       <NavItem icon={<Command className="w-5 h-5" />} label="Graphs" isOpen={isOpen} active={pathname.includes('/graphs')} href="/graphs" color="blue" onClick={onItemClick} />
       <NavItem icon={<FileText className="w-5 h-5" />} label="Writing" isOpen={isOpen} active={pathname.includes('/writing')} href="/writing" color="blue" onClick={onItemClick} />
@@ -108,6 +203,7 @@ function IntelNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () =
 function AvatarMenu() {
   const { data: session } = useSession();
   const user = session?.user;
+  const isAdmin = user?.role === 'ADMIN';
 
   // Get initials for avatar fallback
   const initials = user?.name
@@ -138,6 +234,15 @@ function AvatarMenu() {
             <p className="text-[10px] text-muted font-serif italic">{user?.email || "No email provided"}</p>
           </div>
 
+          {isAdmin && (
+            <DropdownMenu.Item asChild className="group flex items-center px-3 py-2 text-sm text-muted hover:text-ink hover:bg-paper rounded-sm outline-none cursor-pointer transition-colors">
+              <Link href="/admin" className="flex items-center w-full">
+                <Shield className="w-4 h-4 mr-3 opacity-60 group-hover:opacity-100" />
+                <span className="font-serif italic font-medium">Admin Dashboard</span>
+              </Link>
+            </DropdownMenu.Item>
+          )}
+
           <DropdownMenu.Item asChild className="group flex items-center px-3 py-2 text-sm text-muted hover:text-ink hover:bg-paper rounded-sm outline-none cursor-pointer transition-colors">
             <Link href="/settings" className="flex items-center w-full">
               <User className="w-4 h-4 mr-3 opacity-60 group-hover:opacity-100" />
@@ -147,7 +252,7 @@ function AvatarMenu() {
 
           <DropdownMenu.Item asChild className="group flex items-center px-3 py-2 text-sm text-muted hover:text-ink hover:bg-paper rounded-sm outline-none cursor-pointer transition-colors">
             <Link href="/settings" className="flex items-center w-full">
-              <Settings className="w-4 h-4 mr-3 opacity-60 group-hover:opacity-100" />
+              <SettingsIcon className="w-4 h-4 mr-3 opacity-60 group-hover:opacity-100" />
               <span className="font-serif italic">Settings</span>
             </Link>
           </DropdownMenu.Item>
@@ -252,7 +357,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-border space-y-2">
-          <NavItem icon={<Settings className="w-5 h-5" />} label="Settings" isOpen={isSidebarOpen} href="/settings" />
+          <NavItem icon={<SettingsIcon className="w-5 h-5" />} label="Settings" isOpen={isSidebarOpen} href="/settings" />
           <button
             onClick={toggleSidebar}
             className="w-full flex items-center p-2 text-muted hover:text-ink transition-colors rounded-md group"
@@ -358,6 +463,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Bell className="w-5 h-5" />
               <span className="absolute top-2 right-2 w-2 h-2 bg-intel-blue rounded-full border-2 border-white shadow-sm" />
             </Link>
+            {currentProjectId && (
+              <>
+                <div className="h-6 w-[1px] bg-border mx-1 hidden sm:block" />
+                <ExportMenu projectId={currentProjectId} className="hidden sm:flex" />
+              </>
+            )}
             <div className="h-6 w-[1px] bg-border mx-1 hidden sm:block" />
             <AvatarMenu />
           </div>

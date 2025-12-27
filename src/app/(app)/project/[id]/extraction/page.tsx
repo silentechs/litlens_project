@@ -1,6 +1,13 @@
-import { ExtractionBuilder } from "@/features/extraction/components/ExtractionBuilder";
+import { ExtractionLab } from "@/features/extraction/components/ExtractionLab";
 
-export default function ExtractionPage() {
-  return <ExtractionBuilder />;
+interface PageProps {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+export default async function ExtractionPage(props: PageProps) {
+  const params = await props.params;
+  return <ExtractionLab projectId={params.id} />;
 }
 

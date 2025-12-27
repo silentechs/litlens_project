@@ -11,6 +11,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { PhaseSelector } from "./PhaseSelector";
+import { ExportMenu } from "@/features/projects/components/ExportMenu";
+import { useParams } from "next/navigation";
 
 interface ScreeningStatsProps {
     currentPhase: ScreeningPhase;
@@ -42,6 +44,8 @@ export function ScreeningStats({
     onMoveToNextPhase,
     onPhaseChange
 }: ScreeningStatsProps) {
+    const params = useParams();
+    const projectId = params.id as string;
 
     const container = {
         hidden: { opacity: 0 },
@@ -191,6 +195,17 @@ export function ScreeningStats({
                         </span>
                         <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </button>
+                ) : currentPhase === 'FULL_TEXT' && stats.completed && !isBlocked ? (
+                    <button
+                        onClick={() => window.location.href = `/projects/${projectId}/extraction`}
+                        className="group relative inline-flex items-center justify-center px-8 py-4 font-serif text-lg text-white bg-indigo-600 rounded-sm overflow-hidden transition-all hover:bg-indigo-700 hover:shadow-lg hover:-translate-y-0.5"
+                    >
+                        <span className="relative z-10 flex items-center gap-3">
+                            Proceed to Data Extraction
+                            <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
+                        </span>
+                        <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
                 ) : (
                     <div className="flex gap-4">
                         <button
@@ -202,6 +217,7 @@ export function ScreeningStats({
                         <button className="px-8 py-3 bg-ink text-paper font-mono uppercase text-xs tracking-widest hover:bg-ink/90 transition-all rounded-sm">
                             Return to Dashboard
                         </button>
+                        <ExportMenu projectId={projectId} className="px-8 py-3 h-auto" />
                     </div>
                 )}
             </motion.div>

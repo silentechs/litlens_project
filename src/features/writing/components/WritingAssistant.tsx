@@ -43,6 +43,7 @@ interface WritingProject {
   citationStyle: string;
   targetLength: number | null;
   updatedAt: string;
+  sources?: any[];
 }
 
 interface ChatMessage {
@@ -197,7 +198,7 @@ export function WritingAssistant() {
 
   // Manual save (store JSON in ref to avoid stale closure)
   const contentJsonRef = useRef<object | null>(null);
-  
+
   const handleContentChangeWithRef = useCallback((json: object, html: string) => {
     contentJsonRef.current = json;
     handleContentChange(json, html);
@@ -216,19 +217,19 @@ export function WritingAssistant() {
       credentials: "include",
     });
     const text = await res.text();
-    
+
     const mimeTypes = {
       markdown: "text/markdown",
       html: "text/html",
       text: "text/plain",
     };
-    
+
     const extensions = {
       markdown: "md",
       html: "html",
       text: "txt",
     };
-    
+
     const blob = new Blob([text], { type: mimeTypes[format] });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -300,6 +301,7 @@ export function WritingAssistant() {
 
   const getWordCount = () => {
     if (!localContent) return 0;
+    if (typeof localContent !== "string") return 0; // Skip for JSON objects
     const text = localContent.replace(/<[^>]*>/g, "");
     return text.split(/\s+/).filter(Boolean).length;
   };

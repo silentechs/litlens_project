@@ -14,14 +14,18 @@ const credentialsSchema = z.object({
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
-  
+
   providers: [
     // Magic Link via Resend
     Resend({
       apiKey: process.env.RESEND_API_KEY,
-      from: process.env.FROM_EMAIL || "LitLens <noreply@litlens.com>",
+      from: process.env.FROM_EMAIL || "LitLens <noreply@litlens.app>",
+      sendVerificationRequest: async ({ identifier: email, url }) => {
+        const { sendMagicLink } = await import("@/lib/services/email-service");
+        await sendMagicLink({ email, url });
+      },
     }),
-    
+
     // Email/Password credentials
     Credentials({
       id: "credentials",
@@ -59,7 +63,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             console.log("[Auth] User not found:", email);
             return null;
           }
-          
+
           if (!user.password) {
             console.log("[Auth] User has no password set (magic link user):", email);
             return null;
@@ -73,7 +77,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
 
           console.log("[Auth] Login successful for:", email);
-          
+
           // Return user data (without password)
           return {
             id: user.id,
@@ -90,12 +94,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  
+
   session: {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  
+
   pages: {
     signIn: "/login",
     signOut: "/login",
@@ -103,7 +107,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     verifyRequest: "/verify-request",
     newUser: "/onboarding",
   },
-  
+
   callbacks: {
     async jwt({ token, user, trigger, session }) {
       // Initial sign in
@@ -111,7 +115,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.id = user.id;
         token.role = (user as { role?: string }).role || "USER";
       }
-      
+
       // Fetch fresh user data on session update
       if (trigger === "update" && session) {
         const freshUser = await db.user.findUnique({
@@ -124,7 +128,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             role: true,
           },
         });
-        
+
         if (freshUser) {
           token.name = freshUser.name;
           token.email = freshUser.email;
@@ -132,10 +136,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.role = freshUser.role;
         }
       }
-      
+
       return token;
     },
-    
+
     async session({ session, token }) {
       if (token && session.user) {
         session.user.id = token.id as string;
@@ -143,22 +147,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return session;
     },
-    
+
     async signIn({ user, account }) {
       // For credentials provider, always allow (password already verified)
       if (account?.provider === "credentials") {
         return true;
       }
-      
+
       // For magic link, check email exists
       if (!user?.email) {
         return false;
       }
-      
+
       return true;
     },
   },
-  
+
   events: {
     async signIn({ user, account, isNewUser }) {
       // Log sign in activity
@@ -176,7 +180,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }).catch(console.error);
       }
     },
-    
+
     async createUser({ user }) {
       // Create default preferences for new users
       if (user.id) {
@@ -188,7 +192,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
     },
   },
-  
+
   secret: process.env.AUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
 });
@@ -260,7 +264,7 @@ declare module "next-auth" {
       role?: string;
     };
   }
-  
+
   interface User {
     role?: string;
     emailVerified?: Date | null;

@@ -1,11 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import { useScreeningStore } from "@/stores/screening-store";
 import { useScreeningQueue, useSubmitDecision, useScreeningNextSteps as useScreeningQueueNextSteps, useAdvancePhase } from "@/features/screening/api/queries";
-import { useProject } from "@/features/projects/api/queries";
+import { useProject, useProjectStats } from "@/features/projects/api/queries";
 import { useAppStore } from "@/stores/app-store";
-import type { ScreeningDecision, ScreeningQueueItem } from "@/types/screening";
+import type { ScreeningDecision, ScreeningQueueItem, ScreeningPhase } from "@/types/screening";
 import {
   Check,
   X,
@@ -32,8 +33,31 @@ import { Textarea } from "@/components/ui/textarea";
 import { KeywordHighlighter } from "./KeywordHighlighter";
 import { ScreeningStats } from "./ScreeningStats";
 import { PhaseSelector } from "./PhaseSelector";
+import { LeadOperationsPanel } from "./LeadOperationsPanel";
+import { SwipeableCard } from "./SwipeableCard";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+// Simple hook for responsive check
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 1024);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+  return isMobile;
+}
 
 export function ScreeningQueue() {
+  const router = useRouter();
   const { currentProjectId } = useAppStore();
   const {
     currentIndex,
@@ -54,6 +78,13 @@ export function ScreeningQueue() {
   const [notes, setNotes] = useState("");
   const [showNotes, setShowNotes] = useState(false);
 
+  // Batch Mode State
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBatchPanel, setShowBatchPanel] = useState(false);
+
+  const isMobile = useIsMobile();
+
   // Fetch screening queue from API
   const {
     data,
@@ -72,6 +103,7 @@ export function ScreeningQueue() {
   // Move hooks to top level
   const { data: nextSteps, isLoading: isLoadingNextSteps } = useScreeningQueueNextSteps(currentProjectId || undefined, currentPhase);
   const { data: project } = useProject(currentProjectId || undefined);
+  const { data: stats } = useProjectStats(currentProjectId || undefined);
 
   // Phase advancement mutation
   const advancePhase = useAdvancePhase(currentProjectId || "");
@@ -96,13 +128,29 @@ export function ScreeningQueue() {
     }
   }, [studies.length, currentIndex, setCurrentIndex]);
 
+  // Handle select all
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.length === studies.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(studies.map(s => s.id));
+    }
+  }, [studies, selectedIds]);
+
+  // Handle single selection
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  }, []);
+
   // Handle decision
-  const handleDecision = useCallback((decision: ScreeningDecision) => {
+  const handleDecision = useCallback((decision: ScreeningDecision | "MAYBE") => {
     if (!currentStudy || !currentProjectId) return;
 
+    // Map MAYBE to string literal type if necessary, usually it matches.
     if (decision === 'EXCLUDE' && !exclusionReason) {
       setShowExclusionInput(true);
-      toast.error("An exclusion reason is required.");
       return;
     }
 
@@ -112,7 +160,7 @@ export function ScreeningQueue() {
       {
         projectWorkId: currentStudy.id,
         phase: currentPhase,
-        decision,
+        decision: decision as ScreeningDecision,
         exclusionReason: decision === 'EXCLUDE' ? exclusionReason : undefined,
         confidence: confidence,
         reasoning: notes,
@@ -136,7 +184,13 @@ export function ScreeningQueue() {
         },
       }
     );
-  }, [currentStudy, currentProjectId, currentPhase, submitDecision, getDecisionTime, refetch]);
+  }, [currentStudy, currentProjectId, currentPhase, submitDecision, getDecisionTime, refetch, exclusionReason, confidence, notes]);
+
+  const handleSwipe = useCallback((direction: "left" | "right" | "up") => {
+    if (direction === "left") handleDecision("EXCLUDE");
+    if (direction === "right") handleDecision("INCLUDE");
+    if (direction === "up") handleDecision("MAYBE");
+  }, [handleDecision]);
 
   // Keyboard Shortcuts
   useEffect(() => {
@@ -227,13 +281,14 @@ export function ScreeningQueue() {
             maybe: nextSteps?.phaseStats?.maybe || 0
           },
           canMoveToNextPhase: !!nextSteps?.canMoveToNextPhase,
-          nextPhase: nextSteps?.nextPhase
+          nextPhase: nextSteps?.nextPhase as "TITLE_ABSTRACT" | "FULL_TEXT" | "FINAL" | undefined
         }}
         onRefresh={() => refetch()}
         onPhaseChange={setCurrentPhase}
         onResolveConflicts={() => {
-          // Navigate to conflicts (mock for now)
-          toast.info("Conflict resolution interface coming soon");
+          if (currentProjectId) {
+            router.push(`/project/${currentProjectId}/conflicts`);
+          }
         }}
         onMoveToNextPhase={() => {
           if (nextSteps?.nextPhase && currentProjectId) {
@@ -258,24 +313,45 @@ export function ScreeningQueue() {
   const progress = ((currentIndex + 1) / totalStudies) * 100;
   const authorsDisplay = currentStudy.authors.map(a => a.name).join(", ");
 
+
+
+
+  const enabledPhases = ["TITLE_ABSTRACT"] as ScreeningPhase[];
+
+  if (stats) {
+    if (stats.progress.screening.percentage === 100 || stats.progress.fullText.total > 0) {
+      enabledPhases.push("FULL_TEXT");
+    }
+
+    if (stats.progress.fullText.percentage === 100 || stats.progress.extraction.total > 0) {
+      enabledPhases.push("FINAL");
+    }
+  } else {
+    // Fallback if stats loading (or just default)
+    enabledPhases.push("FULL_TEXT", "FINAL");
+  }
+
   return (
     <div className={cn(
       "flex flex-col h-full transition-all duration-700 ease-in-out",
-      isFocused ? "fixed inset-0 bg-paper z-[100] p-12 overflow-hidden" : "space-y-12"
+      isFocused ? "fixed inset-0 bg-paper z-[100] p-12 overflow-hidden" : "space-y-6 lg:space-y-12"
     )}>
       {/* Header */}
       <header className={cn(
         "flex justify-between items-center transition-all duration-500",
-        isFocused ? "max-w-7xl mx-auto w-full mb-12" : ""
+        isFocused ? "max-w-7xl mx-auto w-full mb-12" : "",
+        // On mobile, compact the header
+        isMobile ? "flex-col items-start gap-4" : ""
       )}>
-        <div className="flex items-center gap-10">
+        <div className="flex items-center gap-10 w-full justify-between lg:justify-start">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted font-bold">Phase:</span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.3em] text-muted font-bold hidden sm:inline">Phase:</span>
               <PhaseSelector
                 currentPhase={currentPhase}
                 onPhaseChange={setCurrentPhase}
-                className="w-80"
+                enabledPhases={enabledPhases}
+                className="w-48 lg:w-80"
               />
             </div>
             <div className="h-4 w-[1px] bg-border" />
@@ -294,13 +370,18 @@ export function ScreeningQueue() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className={cn("flex items-center gap-4", isMobile && "hidden")}>
           <ToolbarButton
             onClick={toggleFocusMode}
             icon={isFocused ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             label={isFocused ? "Exit Focus" : "Focus Mode (F)"}
           />
-          {!isFocused && (
+          <ToolbarButton
+            onClick={() => setIsBatchMode(!isBatchMode)}
+            icon={isBatchMode ? <X className="w-5 h-5" /> : <Loader2 className="w-5 h-5 rotate-45" />} // Using rotated Loader as generic grid icon since Grid/Table not imported yet
+            label={isBatchMode ? "Exit Batch" : "Batch Mode"}
+          />
+          {!isFocused && !isBatchMode && (
             <>
               <ToolbarButton icon={<History className="w-5 h-5" />} label="History" />
               <ToolbarButton icon={<Keyboard className="w-5 h-5" />} label="Shortcuts" />
@@ -314,220 +395,317 @@ export function ScreeningQueue() {
         "flex-1 grid gap-20",
         isFocused ? "grid-cols-12 max-w-7xl mx-auto w-full" : "grid-cols-1"
       )}>
-        {/* Study Content */}
-        <div className={cn(
-          "space-y-16 overflow-y-auto scroll-smooth pr-6 scrollbar-hide",
-          isFocused ? "col-span-8 pr-20" : "max-w-4xl"
-        )}>
-          <AnimatePresence mode="wait">
-            <motion.article
-              key={currentStudy.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="space-y-16"
-            >
-              <div className="space-y-8">
-                <h2 className="text-7xl font-serif leading-[1.05] tracking-tight text-ink decoration-intel-blue/20 underline-offset-8">
-                  <KeywordHighlighter
-                    text={currentStudy.title}
-                    keywords={project?.highlightKeywords || []}
-                  />
-                </h2>
-                <div className="flex flex-wrap items-center gap-8 text-[11px] font-mono uppercase tracking-[0.25em] text-muted">
-                  <span className="font-bold text-ink/80">{authorsDisplay}</span>
-                  {currentStudy.journal && (
-                    <>
-                      <div className="w-1.5 h-1.5 rounded-full bg-intel-blue/40" />
-                      <span className="italic">{currentStudy.journal}</span>
-                    </>
-                  )}
-                  {currentStudy.year && (
-                    <>
-                      <div className="w-1.5 h-1.5 rounded-full bg-intel-blue/40" />
-                      <span>{currentStudy.year}</span>
-                    </>
-                  )}
-                </div>
+        {/* Batch Mode View */}
+        {isBatchMode ? (
+          <div className="max-w-7xl mx-auto w-full space-y-4">
+            <div className="flex justify-between items-center bg-white p-4 border border-border rounded-sm">
+              <div className="flex items-center gap-4">
+                <h3 className="font-serif italic text-lg text-ink">Batch Selection</h3>
+                <div className="h-4 w-[1px] bg-border" />
+                <span className="font-mono text-xs uppercase tracking-widest text-muted">
+                  {selectedIds.length} Selected
+                </span>
               </div>
-
-              <div className="accent-line opacity-20" />
-
-              <div className="space-y-10">
-                <div className="flex items-center gap-4">
-                  <h3 className="font-mono text-[10px] uppercase tracking-[0.4em] text-muted font-black">Abstract Synthesis</h3>
-                  <div className="flex-1 h-px bg-border/30" />
-                </div>
-                <p className="text-3xl font-serif leading-[1.55] italic text-ink/90 first-letter:text-8xl first-letter:font-bold first-letter:mr-3 first-letter:float-left first-letter:text-ink first-letter:leading-none select-text">
-                  <KeywordHighlighter
-                    text={currentStudy.abstract || "No abstract available."}
-                    keywords={project?.highlightKeywords || []}
-                  />
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-6 pt-12">
-                {currentStudy.aiSuggestion && currentStudy.aiConfidence && (
-                  <MetadataBadge
-                    icon={<Sparkles className="w-3.5 h-3.5 text-intel-blue animate-pulse" />}
-                    label={`AI Prediction: ${currentStudy.aiSuggestion} (${Math.round(currentStudy.aiConfidence * 100)}%)`}
-                    variant="intel"
-                  />
-                )}
-                {currentStudy.doi && (
-                  <MetadataBadge
-                    icon={<Info className="w-3.5 h-3.5" />}
-                    label={`DOI: ${currentStudy.doi}`}
-                  />
-                )}
-              </div>
-            </motion.article>
-          </AnimatePresence>
-        </div>
-
-        {/* Action Panel (Focused Mode Sidebar) */}
-        {isFocused && (
-          <div className="col-span-4 border-l border-border/50 pl-20 flex flex-col justify-center space-y-20">
-            <div className="space-y-12">
-              <h3 className="font-mono text-[10px] uppercase tracking-[0.4em] text-muted font-black">Adjudication</h3>
-              <div className="space-y-6">
-                <DecisionButton
-                  label="Include"
-                  shortcut="I"
-                  icon={<Check className="w-8 h-8" />}
-                  color="green"
-                  active={currentStudy.userDecision === 'INCLUDE'}
-                  loading={submitDecision.isPending}
-                  onClick={() => handleDecision('INCLUDE')}
-                />
-
-                <div className="bg-muted/10 p-4 rounded-md space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-mono uppercase text-muted font-bold">Confidence</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setShowNotes(!showNotes)}
-                      className="h-6 text-[10px]"
-                    >
-                      {showNotes ? "Hide Notes" : "Add Notes"}
-                    </Button>
-                  </div>
-                  <ConfidenceSlider
-                    value={confidence}
-                    onChange={setConfidence}
-                  />
-                  {showNotes && (
-                    <Textarea
-                      placeholder="Reasoning..."
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      className="text-xs min-h-[60px]"
-                    />
-                  )}
-                </div>
-
-                {/* Exclude Button with Popover Logic */}
-                <div className="relative group/exclude">
-                  <DecisionButton
-                    label="Exclude"
-                    shortcut="E"
-                    icon={<X className="w-8 h-8" />}
-                    color="red"
-                    active={currentStudy.userDecision === 'EXCLUDE'}
-                    loading={submitDecision.isPending}
-                    onClick={() => {
-                      if (exclusionReason) {
-                        handleDecision('EXCLUDE');
-                      } else {
-                        setShowExclusionInput(true);
-                      }
-                    }}
-                  />
-
-                  <AnimatePresence>
-                    {showExclusionInput && (
-                      <motion.div
-                        initial={{ opacity: 0, x: -20, scale: 0.95 }}
-                        animate={{ opacity: 1, x: 0, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="absolute right-full top-0 mr-4 w-80 bg-white border border-border rounded-sm shadow-xl p-6 z-50 arrow-right"
-                      >
-                        <div className="space-y-4">
-
-                          <div className="flex justify-between items-center">
-                            <h4 className="font-serif italic text-lg">Why Exclude?</h4>
-                            <button onClick={() => setShowExclusionInput(false)} className="text-muted hover:text-ink">
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                          <p className="text-xs text-muted uppercase tracking-wider font-mono">Select a reason is required</p>
-
-                          <ExclusionReasonInputs
-                            value={exclusionReason}
-                            onChange={setExclusionReason}
-                          />
-
-                          <button
-                            onClick={() => handleDecision('EXCLUDE')}
-                            disabled={!exclusionReason}
-                            className="w-full btn-editorial bg-rose-600 text-white hover:bg-rose-700 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Confirm Exclusion
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-
-                <DecisionButton
-                  label="Maybe"
-                  shortcut="M"
-                  icon={<HelpCircle className="w-8 h-8" />}
-                  color="muted"
-                  active={currentStudy.userDecision === 'MAYBE'}
-                  loading={submitDecision.isPending}
-                  onClick={() => handleDecision('MAYBE')}
-                />
-              </div>
+              <Button
+                onClick={() => setShowBatchPanel(true)}
+                disabled={selectedIds.length === 0}
+                className="bg-ink text-paper hover:bg-ink/90 font-mono uppercase tracking-widest text-xs"
+              >
+                <Sparkles className="w-3 h-3 mr-2" />
+                Batch Actions
+              </Button>
             </div>
 
-            <div className="pt-20 border-t border-border/30 space-y-8">
-              <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-[0.2em] text-muted">
-                <span>Navigate Workspace</span>
-                <div className="flex gap-4">
-                  <button
-                    onClick={previous}
-                    disabled={currentIndex === 0}
-                    className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={next}
-                    disabled={currentIndex >= totalStudies - 1}
-                    className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-              <div className="p-6 bg-white/50 border border-border/40 rounded-sm">
-                <p className="text-[11px] text-muted-foreground font-serif italic leading-relaxed">
-                  Screening decisions are currently <span className="font-bold text-ink">blind</span>. Your assessment will remain confidential until the consensus phase.
-                </p>
-              </div>
+            <div className="bg-white border border-border rounded-sm overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-12">
+                      <input
+                        type="checkbox"
+                        checked={studies.length > 0 && selectedIds.length === studies.length}
+                        onChange={toggleSelectAll}
+                        className="rounded-sm border-border"
+                      />
+                    </TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Authors</TableHead>
+                    <TableHead>Year</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>AI Suggestion</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {studies.map((study) => (
+                    <TableRow key={study.id}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(study.id)}
+                          onChange={() => toggleSelection(study.id)}
+                          className="rounded-sm border-border"
+                        />
+                      </TableCell>
+                      <TableCell className="font-medium max-w-lg truncate" title={study.title}>
+                        {study.title}
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {study.authors.map(a => a.name).join(", ")}
+                      </TableCell>
+                      <TableCell>{study.year || "-"}</TableCell>
+                      <TableCell>
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-widest",
+                          study.userDecision === "INCLUDE" ? "bg-emerald-100 text-emerald-700" :
+                            study.userDecision === "EXCLUDE" ? "bg-rose-100 text-rose-700" :
+                              study.userDecision === "MAYBE" ? "bg-slate-100 text-slate-700" :
+                                "bg-gray-50 text-gray-400"
+                        )}>
+                          {study.userDecision || "Pending"}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {study.aiSuggestion && (
+                          <div className="flex items-center gap-1 text-xs font-mono text-intel-blue">
+                            <Sparkles className="w-3 h-3" />
+                            {study.aiSuggestion} ({Math.round((study.aiConfidence || 0) * 100)}%)
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </div>
           </div>
+        ) : (
+          <>
+            {/* Study Content */}
+            <div className={cn(
+              "space-y-16 overflow-y-auto scroll-smooth pr-6 scrollbar-hide",
+              isFocused ? "col-span-8 pr-20" : "max-w-4xl"
+            )}>
+              <SwipeableCard onSwipe={handleSwipe} disabled={!isMobile}>
+                <AnimatePresence mode="wait">
+                  <motion.article
+                    key={currentStudy.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    className="space-y-16"
+                  >
+                    <div className="space-y-8">
+                      <h2 className="text-3xl md:text-5xl lg:text-7xl font-serif leading-[1.05] tracking-tight text-ink decoration-intel-blue/20 underline-offset-8">
+                        <KeywordHighlighter
+                          text={currentStudy.title}
+                          keywords={project?.highlightKeywords || []}
+                        />
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-8 text-[11px] font-mono uppercase tracking-[0.25em] text-muted">
+                        <span className="font-bold text-ink/80">{authorsDisplay}</span>
+                        {currentStudy.journal && (
+                          <>
+                            <div className="w-1.5 h-1.5 rounded-full bg-intel-blue/40" />
+                            <span className="italic">{currentStudy.journal}</span>
+                          </>
+                        )}
+                        {currentStudy.year && (
+                          <>
+                            <div className="w-1.5 h-1.5 rounded-full bg-intel-blue/40" />
+                            <span>{currentStudy.year}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="accent-line opacity-20" />
+
+                    <div className="space-y-10">
+                      <div className="flex items-center gap-4">
+                        <h3 className="font-mono text-[10px] uppercase tracking-[0.4em] text-muted font-black">Abstract Synthesis</h3>
+                        <div className="flex-1 h-px bg-border/30" />
+                      </div>
+                      <p className="text-lg md:text-2xl lg:text-3xl font-serif leading-[1.55] italic text-ink/90 first-letter:text-5xl md:first-letter:text-8xl first-letter:font-bold first-letter:mr-3 first-letter:float-left first-letter:text-ink first-letter:leading-none select-text">
+                        <KeywordHighlighter
+                          text={currentStudy.abstract || "No abstract available."}
+                          keywords={project?.highlightKeywords || []}
+                        />
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-6 pt-12">
+                      {currentStudy.aiSuggestion && currentStudy.aiConfidence && (
+                        <MetadataBadge
+                          icon={<Sparkles className="w-3.5 h-3.5 text-intel-blue animate-pulse" />}
+                          label={`AI Prediction: ${currentStudy.aiSuggestion} (${Math.round(currentStudy.aiConfidence * 100)}%)`}
+                          variant="intel"
+                        />
+                      )}
+                      {currentStudy.doi && (
+                        <MetadataBadge
+                          icon={<Info className="w-3.5 h-3.5" />}
+                          label={`DOI: ${currentStudy.doi}`}
+                        />
+                      )}
+                    </div>
+                  </motion.article>
+                </AnimatePresence>
+              </SwipeableCard>
+            </div>
+
+            {/* Action Panel (Focused Mode Sidebar) */}
+            {!isBatchMode && (
+              isFocused ? (
+                <div className="col-span-4 border-l border-border/50 pl-20 flex flex-col justify-center space-y-20">
+                  <div className="space-y-12">
+                    <h3 className="font-mono text-[10px] uppercase tracking-[0.4em] text-muted font-black">Adjudication</h3>
+                    <div className="space-y-6">
+                      <DecisionButton
+                        label="Include"
+                        shortcut="I"
+                        icon={<Check className="w-8 h-8" />}
+                        color="green"
+                        active={currentStudy.userDecision === 'INCLUDE'}
+                        loading={submitDecision.isPending}
+                        onClick={() => handleDecision('INCLUDE')}
+                      />
+
+                      <div className="bg-muted/10 p-4 rounded-md space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-mono uppercase text-muted font-bold">Confidence</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowNotes(!showNotes)}
+                            className="h-6 text-[10px]"
+                          >
+                            {showNotes ? "Hide Notes" : "Add Notes"}
+                          </Button>
+                        </div>
+                        <ConfidenceSlider
+                          value={confidence}
+                          onChange={setConfidence}
+                        />
+                        {showNotes && (
+                          <Textarea
+                            placeholder="Reasoning..."
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            className="text-xs min-h-[60px]"
+                          />
+                        )}
+                      </div>
+
+                      {/* Exclude Button with Popover Logic */}
+                      <div className="relative group/exclude">
+                        <DecisionButton
+                          label="Exclude"
+                          shortcut="E"
+                          icon={<X className="w-8 h-8" />}
+                          color="red"
+                          active={currentStudy.userDecision === 'EXCLUDE'}
+                          loading={submitDecision.isPending}
+                          onClick={() => {
+                            if (exclusionReason) {
+                              handleDecision('EXCLUDE');
+                            } else {
+                              setShowExclusionInput(true);
+                            }
+                          }}
+                        />
+
+                        <AnimatePresence>
+                          {showExclusionInput && (
+                            <motion.div
+                              initial={{ opacity: 0, x: -20, scale: 0.95 }}
+                              animate={{ opacity: 1, x: 0, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.95 }}
+                              className="absolute right-full top-0 mr-4 w-80 bg-white border border-border rounded-sm shadow-xl p-6 z-50 arrow-right"
+                            >
+                              <div className="space-y-4">
+
+                                <div className="flex justify-between items-center">
+                                  <h4 className="font-serif italic text-lg">Why Exclude?</h4>
+                                  <button onClick={() => setShowExclusionInput(false)} className="text-muted hover:text-ink">
+                                    <X className="w-4 h-4" />
+                                  </button>
+                                </div>
+                                <p className="text-xs text-muted uppercase tracking-wider font-mono">Select a reason is required</p>
+
+                                <ExclusionReasonInputs
+                                  value={exclusionReason}
+                                  onChange={setExclusionReason}
+                                />
+
+                                <button
+                                  onClick={() => handleDecision('EXCLUDE')}
+                                  disabled={!exclusionReason}
+                                  className="w-full btn-editorial bg-rose-600 text-white hover:bg-rose-700 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  Confirm Exclusion
+                                </button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+
+                      <DecisionButton
+                        label="Maybe"
+                        shortcut="M"
+                        icon={<HelpCircle className="w-8 h-8" />}
+                        color="muted"
+                        active={currentStudy.userDecision === 'MAYBE'}
+                        loading={submitDecision.isPending}
+                        onClick={() => handleDecision('MAYBE')}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-20 border-t border-border/30 space-y-8">
+                    <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-[0.2em] text-muted">
+                      <span>Navigate Workspace</span>
+                      <div className="flex gap-4">
+                        <button
+                          onClick={previous}
+                          disabled={currentIndex === 0}
+                          className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={next}
+                          disabled={currentIndex >= totalStudies - 1}
+                          className="p-3 hover:bg-white border border-border/60 hover:border-ink rounded-sm transition-all shadow-sm disabled:opacity-50"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-6 bg-white/50 border border-border/40 rounded-sm">
+                      <p className="text-[11px] text-muted-foreground font-serif italic leading-relaxed">
+                        Screening decisions are currently <span className="font-bold text-ink">blind</span>. Your assessment will remain confidential until the consensus phase.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null
+            )}
+          </>
         )}
       </div>
 
       {/* Footer Decisions (Normal Mode) */}
-      {!isFocused && (
-        <footer className="fixed bottom-12 right-12 flex gap-8 bg-white/95 backdrop-blur-xl p-8 border border-border shadow-editorial rounded-sm z-50 animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <div className="flex items-center gap-6 border-r border-border pr-8">
+      {!isFocused && !isBatchMode && (
+        <footer className={cn(
+          "fixed z-50 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white/95 backdrop-blur-xl border border-border shadow-editorial flex justify-between items-center",
+          // Desktop: Floating bottom right
+          "md:bottom-12 md:right-12 md:left-auto md:w-auto md:p-8 md:rounded-sm md:gap-8",
+          // Mobile: Fixed bottom full width
+          "bottom-0 left-0 right-0 w-full p-4 gap-4 rounded-t-xl border-x-0 border-b-0"
+        )}>
+          <div className="flex items-center gap-6 md:border-r md:border-border md:pr-8">
             <button
               onClick={previous}
               disabled={currentIndex === 0}
@@ -535,7 +713,7 @@ export function ScreeningQueue() {
             >
               <ChevronLeft className="w-6 h-6" />
             </button>
-            <div className="text-center min-w-[60px]">
+            <div className="text-center min-w-[60px] hidden md:block">
               <div className="font-mono text-xs font-bold text-ink">{currentIndex + 1}</div>
               <div className="font-mono text-[8px] uppercase tracking-tighter text-muted">of {totalStudies}</div>
             </div>
@@ -547,32 +725,31 @@ export function ScreeningQueue() {
               <ChevronRight className="w-6 h-6" />
             </button>
           </div>
-          <div className="flex gap-4 items-center">
-            <div className="mr-4 flex gap-4 items-center">
+          <div className="flex gap-4 items-center flex-1 justify-end">
+            <div className="hidden md:flex gap-4 items-center mr-4">
               <ConfidenceSlider
                 value={confidence}
                 onChange={setConfidence}
                 className="w-32"
               />
-              {/* Notes toggle for footer mode - simplified */}
             </div>
 
             <DecisionButtonSmall
-              label="Exclude (E)"
+              label="Exclude"
               color="red"
               active={currentStudy.userDecision === 'EXCLUDE'}
               loading={submitDecision.isPending}
               onClick={() => handleDecision('EXCLUDE')}
             />
             <DecisionButtonSmall
-              label="Maybe (M)"
+              label="Maybe"
               color="muted"
               active={currentStudy.userDecision === 'MAYBE'}
               loading={submitDecision.isPending}
               onClick={() => handleDecision('MAYBE')}
             />
             <DecisionButtonSmall
-              label="Include (I)"
+              label="Include"
               color="green"
               active={currentStudy.userDecision === 'INCLUDE'}
               loading={submitDecision.isPending}
@@ -580,6 +757,17 @@ export function ScreeningQueue() {
             />
           </div>
         </footer>
+      )}
+
+      {currentProjectId && (
+        <LeadOperationsPanel
+          projectId={currentProjectId}
+          isOpen={showBatchPanel}
+          onClose={() => setShowBatchPanel(false)}
+          selectedIds={selectedIds}
+          onClearSelection={() => setSelectedIds([])}
+          currentPhase={currentPhase as any}
+        />
       )}
     </div>
   );
