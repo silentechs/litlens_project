@@ -52,6 +52,7 @@ model User {
   studyNotes            StudyNote[]
   screeningDecisionRecords ScreeningDecisionRecord[]
   calibrationDecisions     CalibrationDecision[]
+  aiConversations       AIConversation[]
 
   @@index([email])
 }
@@ -259,6 +260,7 @@ model Project {
   invitations     ProjectInvitation[]
   eligibilityCriteria EligibilityCriteria?
   studyTags       StudyTag[]
+  aiConversations AIConversation[]
 
   @@index([organizationId])
   @@index([status])
@@ -1492,9 +1494,9 @@ model DocumentChunk {
   workId      String
   
   content     String   @db.Text
-  metadata    Json     // { page, section, bbox, ... }
+  metadata    Json     // { page, section, bbox, startChar, endChar, sentenceIndex }
   
-  // pgvector embedding (OpenAI ada-002 = 1536 dimensions)
+  // pgvector embedding (OpenAI text-embedding-3-large compatible)
   embedding   Unsupported("vector(1536)")?
 
   createdAt   DateTime @default(now())
@@ -1502,4 +1504,94 @@ model DocumentChunk {
   work        Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
   
   @@index([workId])
+}
+
+// ============== AI CHAT CONVERSATIONS ==============
+
+model AIConversation {
+  id          String   @id @default(cuid())
+  projectId   String
+  userId      String
+  
+  title       String?
+  summary     String?  @db.Text  // Auto-generated conversation summary
+  
+  // Conversation metadata
+  messageCount Int      @default(0)
+  lastMessageAt DateTime?
+  
+  // Status
+  isArchived  Boolean  @default(false)
+  isPinned    Boolean  @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    AIMessage[]
+  
+  @@index([projectId, userId])
+  @@index([userId, updatedAt])
+}
+
+model AIMessage {
+  id              String   @id @default(cuid())
+  conversationId  String
+  
+  role            AIMessageRole
+  content         String   @db.Text
+  
+  // Evidence attribution for assistant messages
+  citations       Json?    // [{workId, workTitle, pageNumber, section, excerpt, similarity}]
+  
+  // Response quality metadata
+  confidence      Float?   // 0-1 overall confidence score
+  evidenceQuality AIEvidenceQuality?
+  sourceCount     Int?     // Number of sources used
+  retrievalScores Json?    // Raw similarity scores from retrieval
+  
+  // User feedback
+  feedbackScore   Int?     // 1 (thumbs down) or 5 (thumbs up)
+  feedbackType    AIFeedbackType?
+  feedbackComment String?  @db.Text
+  flagged         Boolean  @default(false)
+  flagReason      String?
+  
+  // Suggested follow-ups (for assistant messages)
+  suggestedQuestions Json? // ["Question 1", "Question 2", "Question 3"]
+  
+  // Processing metadata
+  modelUsed       String?  // e.g., "gpt-4o"
+  tokenCount      Int?
+  processingTimeMs Int?
+  
+  createdAt       DateTime @default(now())
+  
+  conversation    AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@index([conversationId, createdAt])
+}
+
+enum AIMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum AIEvidenceQuality {
+  STRONG      // Multiple high-similarity PDF sources
+  MODERATE    // Some PDF sources or high-similarity abstracts
+  WEAK        // Low similarity or abstract-only
+  NONE        // No evidence retrieved
+}
+
+enum AIFeedbackType {
+  HELPFUL
+  ACCURATE
+  INCOMPLETE
+  HALLUCINATION
+  WRONG_CITATION
+  OFF_TOPIC
+  OTHER
 }

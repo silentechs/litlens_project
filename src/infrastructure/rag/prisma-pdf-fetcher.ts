@@ -8,8 +8,7 @@
  */
 
 import { db } from '@/lib/db';
-import { r2Client } from '@/lib/r2';
-import { uploadFile } from '@/lib/r2';
+import { downloadFile as r2DownloadFile, uploadFile } from '@/lib/r2';
 import type { PDFFetcher } from './ingestion-service';
 
 export class PrismaPDFFetcher implements PDFFetcher {
@@ -101,22 +100,7 @@ export class PrismaPDFFetcher implements PDFFetcher {
    * Fetch PDF from R2 storage
    */
   private async fetchFromR2(key: string): Promise<Buffer> {
-    const response = await r2Client.getObject({
-      Bucket: process.env.R2_BUCKET_NAME || 'litlens-pdfs',
-      Key: key,
-    });
-
-    if (!response.Body) {
-      throw new Error('R2 response has no body');
-    }
-
-    // Convert stream to buffer
-    const chunks: Uint8Array[] = [];
-    for await (const chunk of response.Body as any) {
-      chunks.push(chunk);
-    }
-
-    return Buffer.concat(chunks);
+    return r2DownloadFile(key);
   }
 
   /**

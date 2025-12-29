@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useUnifiedSearch, useSaveToLibrary, useAddToProject } from "../api/queries";
 import { useAppStore } from "@/stores/app-store";
 import type { WorkSearchResult } from "@/types/work";
@@ -39,6 +40,7 @@ interface SearchFilters {
 
 export function UnifiedSearch() {
   const { currentProjectId } = useAppStore();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<SearchTab>('external');
   const [query, setQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -49,6 +51,15 @@ export function UnifiedSearch() {
     openAccess: false,
     type: "",
   });
+
+  // Initialize search from URL parameters (e.g., from Alerts "View Discoveries")
+  useEffect(() => {
+    const urlQuery = searchParams.get("q");
+    if (urlQuery) {
+      setQuery(urlQuery);
+      setSearchQuery(urlQuery);
+    }
+  }, [searchParams]);
 
   // Build active filters for query
   const activeFilters = {

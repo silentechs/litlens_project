@@ -20,12 +20,12 @@ export default function ChatPage({ params }: PageProps) {
                         Evidence Chat with your included studies
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                        Tip: attach full-text PDFs in <span className="font-medium">Screening</span> to enable evidence excerpts.
+                        💡 Attach full-text PDFs in <span className="font-medium">Screening</span> for citation-grounded answers with page references.
                     </p>
                 </div>
             </div>
 
-            <div className="flex-1 bg-card border rounded-xl p-6 shadow-sm">
+            <div className="flex-1 bg-card border rounded-xl p-6 shadow-sm relative">
                 <ChatInterface projectId={id} />
             </div>
         </div>

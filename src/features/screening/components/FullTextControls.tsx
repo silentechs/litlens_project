@@ -1,14 +1,17 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { FileText, UploadCloud, Download, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { FileText, UploadCloud, Download, Loader2, AlertTriangle, CheckCircle2, Eye, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { FullTextViewerDialog } from "./FullTextViewerDialog";
 
 interface FullTextControlsProps {
   projectId: string;
   projectWorkId: string;
   workUrl?: string | null;
+  doi?: string | null;
+  title?: string | null;
   pdfR2Key?: string | null;
   ingestionStatus?: string | null;
   ingestionError?: string | null;
@@ -52,6 +55,8 @@ export function FullTextControls({
   projectId,
   projectWorkId,
   workUrl,
+  doi,
+  title,
   pdfR2Key,
   ingestionStatus,
   ingestionError,
@@ -61,10 +66,13 @@ export function FullTextControls({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isFetching, setIsFetching] = useState(false);
+  const [isViewerOpen, setIsViewerOpen] = useState(false);
 
   const status = normalizeStatus(ingestionStatus);
   const indexed = (chunksCreated ?? 0) > 0 && status === "COMPLETED";
   const hasPdf = !!pdfR2Key;
+  const endNoteClickEnabled = process.env.NEXT_PUBLIC_ENDNOTE_CLICK_ENABLED === "true";
+  const endNoteTargetUrl = workUrl || (doi ? `https://doi.org/${doi}` : null);
 
   const badgeLabel = indexed
     ? "Full text: indexed"
@@ -167,6 +175,30 @@ export function FullTextControls({
           {badgeLabel}
         </button>
 
+        {hasPdf && (
+          <>
+            <button
+              type="button"
+              onClick={() => setIsViewerOpen(true)}
+              className={cn(
+                "px-4 py-2 border rounded-full text-[11px] font-mono uppercase tracking-widest flex items-center gap-2 transition-all",
+                "bg-white border-border hover:border-ink hover:text-ink text-muted"
+              )}
+              title="View the attached full-text PDF."
+            >
+              <Eye className="w-4 h-4" />
+              View full text
+            </button>
+            <FullTextViewerDialog
+              open={isViewerOpen}
+              onOpenChange={setIsViewerOpen}
+              projectId={projectId}
+              projectWorkId={projectWorkId}
+              title={title ?? undefined}
+            />
+          </>
+        )}
+
         <button
           type="button"
           onClick={openPicker}
@@ -213,6 +245,24 @@ export function FullTextControls({
           >
             {isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
             Try fetch
+          </button>
+        )}
+
+        {!hasPdf && endNoteClickEnabled && !!endNoteTargetUrl && (
+          <button
+            type="button"
+            onClick={() => {
+              window.open(endNoteTargetUrl, "_blank", "noopener,noreferrer");
+              toast.info("Tip: if you have EndNote Click installed, use it on the opened page to download the PDF, then upload it here.");
+            }}
+            className={cn(
+              "px-4 py-2 border rounded-full text-[11px] font-mono uppercase tracking-widest flex items-center gap-2 transition-all",
+              "bg-white border-border hover:border-ink hover:text-ink text-muted"
+            )}
+            title="Open the study page/DOI in a new tab so EndNote Click can try to retrieve the PDF."
+          >
+            <ExternalLink className="w-4 h-4" />
+            EndNote Click
           </button>
         )}
       </div>

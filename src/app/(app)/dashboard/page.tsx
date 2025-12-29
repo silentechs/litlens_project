@@ -2,7 +2,7 @@
 
 import { useAppStore } from "@/stores/app-store";
 import { useProjects } from "@/features/projects/api/queries";
-import { UnifiedSearch } from "@/features/discovery/components/UnifiedSearch";
+import { IntelligenceDashboard } from "@/features/discovery/components/IntelligenceDashboard";
 import { 
   Plus, 
   ArrowUpRight, 
@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const { data, isLoading, isError } = useProjects({ limit: 5 });
 
   if (mode === 'INTELLIGENCE') {
-    return <UnifiedSearch />;
+    return <IntelligenceDashboard />;
   }
 
   return (
@@ -130,7 +130,7 @@ function ProjectCard({ project }: { project: ProjectListItem }) {
   return (
     <Link 
       href={`/project/${id}/screening`} 
-      className="block group bg-white border border-border p-8 hover:border-ink hover:shadow-editorial transition-all cursor-pointer rounded-sm relative overflow-hidden"
+      className="block group bg-white border border-border p-5 md:p-8 hover:border-ink hover:shadow-editorial transition-all cursor-pointer rounded-sm relative overflow-hidden"
     >
       <div className="flex justify-between items-start mb-8">
         <h3 className="text-3xl font-serif leading-tight max-w-md group-hover:underline group-hover:text-ink transition-all">

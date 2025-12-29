@@ -1,3 +1,8 @@
+/**
+ * Legacy Chat Route - Redirects to enhanced AI Chat
+ * Keep for backward compatibility, but new code should use /ai-chat
+ */
+
 import { openai } from "@ai-sdk/openai";
 import { streamText } from "ai";
 import { auth } from "@/lib/auth";
@@ -188,8 +193,8 @@ export async function POST(req: Request, { params }: RouteParams) {
 
                 retrieved = (chunks || []).map((c) => ({
                     similarity: c.similarity,
-                    title: c.metadata?.title ?? c.metadata?.workTitle,
-                    doi: c.metadata?.doi,
+                    title: (c.metadata?.title ?? c.metadata?.workTitle) as string | undefined,
+                    doi: c.metadata?.doi as string | undefined,
                     content: c.content,
                 }));
             } catch (e) {

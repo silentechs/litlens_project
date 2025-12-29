@@ -40,7 +40,7 @@ export function PhaseSelector({ currentPhase, onPhaseChange, enabledPhases, clas
                         key={phase.value}
                         onClick={() => onPhaseChange(phase.value)}
                         className={cn(
-                            "relative z-10 flex-1 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.2em] transition-colors duration-300",
+                            "relative z-10 flex-1 px-2 py-2 md:px-4 font-mono text-[9px] md:text-[10px] uppercase tracking-normal md:tracking-[0.2em] transition-colors duration-300",
                             isActive ? "text-paper font-black" : "text-muted hover:text-ink font-bold",
                             enabledPhases && !enabledPhases.includes(phase.value) && "opacity-30 cursor-not-allowed hover:text-muted"
                         )}

@@ -102,7 +102,7 @@ function ProjectCard({ project }: { project: ProjectListItem }) {
   return (
     <Link
       href={href}
-      className="block group bg-white border border-border p-8 hover:border-ink transition-all cursor-pointer rounded-sm shadow-sm"
+      className="block group bg-white border border-border p-5 md:p-8 hover:border-ink transition-all cursor-pointer rounded-sm shadow-sm"
     >
       <div className="flex justify-between items-start mb-8">
         <h3 className="text-3xl font-serif leading-tight max-w-md group-hover:underline">{title}</h3>

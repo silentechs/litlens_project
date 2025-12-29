@@ -312,7 +312,7 @@ export function useMarkMessageRead(projectId: string, messageId: string) {
 
   return useMutation({
     mutationFn: async () => {
-      await apiClient.post(
+      await api.post(
         `/api/projects/${projectId}/chat/messages/${messageId}/read`
       );
     },
@@ -335,7 +335,7 @@ export function useMarkMessagesRead(projectId: string) {
       // Mark each message individually since we don't have a batch endpoint
       await Promise.all(
         input.messageIds.map(messageId =>
-          apiClient.post(`/api/projects/${projectId}/chat/messages/${messageId}/read`)
+          api.post(`/api/projects/${projectId}/chat/messages/${messageId}/read`)
         )
       );
     },

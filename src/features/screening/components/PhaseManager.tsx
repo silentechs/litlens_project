@@ -59,7 +59,7 @@ export function PhaseManager({ projectId }: PhaseManagerProps) {
                 />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-xs font-mono uppercase tracking-widest text-muted">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono uppercase tracking-widest text-muted">
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${nextSteps.conflicts === 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
                     {nextSteps.conflicts} Conflicts

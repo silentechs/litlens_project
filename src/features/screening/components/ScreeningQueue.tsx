@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { ExclusionReasonInputs } from "./ExclusionReasonInputs";
+import { ExclusionReasonModal } from "./ExclusionReasonModal";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ConfidenceSlider } from "./ConfidenceSlider";
@@ -81,8 +81,8 @@ export function ScreeningQueue() {
   } = useScreeningStore();
 
   const [showChat, setShowChat] = useState(false);
-  const [showExclusionInput, setShowExclusionInput] = useState(false);
-  const [exclusionReason, setExclusionReason] = useState("");
+  const [showExclusionModal, setShowExclusionModal] = useState(false);
+  const [pendingExclusionStudyId, setPendingExclusionStudyId] = useState<string | null>(null);
   const [confidence, setConfidence] = useState(80);
   const [notes, setNotes] = useState("");
   const [showNotes, setShowNotes] = useState(false);
@@ -196,13 +196,14 @@ export function ScreeningQueue() {
     );
   }, []);
 
-  // Handle decision
+  // Handle decision - opens modal for EXCLUDE, submits directly for others
   const handleDecision = useCallback((decision: ScreeningDecision | "MAYBE") => {
     if (!currentStudy || !currentProjectId) return;
 
-    // Map MAYBE to string literal type if necessary, usually it matches.
-    if (decision === 'EXCLUDE' && !exclusionReason) {
-      setShowExclusionInput(true);
+    // For EXCLUDE, always show the modal to get a reason
+    if (decision === 'EXCLUDE') {
+      setPendingExclusionStudyId(currentStudy.id);
+      setShowExclusionModal(true);
       return;
     }
 
@@ -213,7 +214,6 @@ export function ScreeningQueue() {
         projectWorkId: currentStudy.id,
         phase: currentPhase,
         decision: decision as ScreeningDecision,
-        exclusionReason: decision === 'EXCLUDE' ? exclusionReason : undefined,
         confidence: confidence,
         reasoning: notes,
         timeSpentMs: timeSpentMs || undefined,
@@ -222,21 +222,58 @@ export function ScreeningQueue() {
       {
         onSuccess: () => {
           // Reset state
-          setExclusionReason("");
-          setShowExclusionInput(false);
           setNotes("");
-          setConfidence(80); // Reset to default "Confident"
+          setConfidence(80);
           setShowNotes(false);
 
-          // Refetch to get updated queue (excluding just-decided study)
-          refetch().then(() => {
-            // Keep current index position, unless we're past the end
-            // The queue will have one fewer item after refetch
-          });
+          // Refetch to get updated queue
+          refetch();
+        },
+        onError: (error) => {
+          toast.error(error instanceof Error ? error.message : "Failed to submit decision");
         },
       }
     );
-  }, [currentStudy, currentProjectId, currentPhase, submitDecision, getDecisionTime, refetch, exclusionReason, confidence, notes]);
+  }, [currentStudy, currentProjectId, currentPhase, submitDecision, getDecisionTime, refetch, confidence, notes]);
+
+  // Handle confirmed exclusion with reason
+  const handleConfirmExclusion = useCallback((exclusionReason: string) => {
+    if (!pendingExclusionStudyId || !currentProjectId) return;
+
+    const timeSpentMs = getDecisionTime();
+    const study = studies.find(s => s.id === pendingExclusionStudyId);
+
+    submitDecision.mutate(
+      {
+        projectWorkId: pendingExclusionStudyId,
+        phase: currentPhase,
+        decision: "EXCLUDE" as ScreeningDecision,
+        exclusionReason: exclusionReason,
+        confidence: confidence,
+        reasoning: notes,
+        timeSpentMs: timeSpentMs || undefined,
+        followedAi: study?.aiSuggestion ? "EXCLUDE" === study.aiSuggestion : undefined,
+      },
+      {
+        onSuccess: () => {
+          // Reset all state
+          setShowExclusionModal(false);
+          setPendingExclusionStudyId(null);
+          setNotes("");
+          setConfidence(80);
+          setShowNotes(false);
+
+          toast.success("Study excluded successfully");
+
+          // Refetch to get updated queue
+          refetch();
+        },
+        onError: (error) => {
+          toast.error(error instanceof Error ? error.message : "Failed to exclude study");
+        },
+      }
+    );
+  }, [pendingExclusionStudyId, currentProjectId, currentPhase, submitDecision, getDecisionTime, refetch, confidence, notes, studies]);
 
   const handleSwipe = useCallback((direction: "left" | "right" | "up") => {
     if (direction === "left") handleDecision("EXCLUDE");
@@ -391,7 +428,7 @@ export function ScreeningQueue() {
                 currentPhase={currentPhase}
                 onPhaseChange={setCurrentPhase}
                 enabledPhases={enabledPhases}
-                className="w-48 lg:w-80"
+                className="w-full max-w-[260px] lg:w-80"
               />
             </div>
             <div className="h-4 w-[1px] bg-border" />
@@ -648,6 +685,8 @@ export function ScreeningQueue() {
                         projectId={currentProjectId!}
                         projectWorkId={currentStudy.id}
                         workUrl={currentStudy.url}
+                        doi={currentStudy.doi}
+                        title={currentStudy.title}
                         pdfR2Key={currentStudy.pdfR2Key}
                         ingestionStatus={currentStudy.ingestionStatus}
                         ingestionError={currentStudy.ingestionError}
@@ -749,59 +788,16 @@ export function ScreeningQueue() {
                         )}
                       </div>
 
-                      {/* Exclude Button with Popover Logic */}
-                      <div className="relative group/exclude">
-                        <DecisionButton
-                          label="Exclude"
-                          shortcut="E"
-                          icon={<X className="w-8 h-8" />}
-                          color="red"
-                          active={currentStudy.userDecision === 'EXCLUDE'}
-                          loading={submitDecision.isPending}
-                          onClick={() => {
-                            if (exclusionReason) {
-                              handleDecision('EXCLUDE');
-                            } else {
-                              setShowExclusionInput(true);
-                            }
-                          }}
-                        />
-
-                        <AnimatePresence>
-                          {showExclusionInput && (
-                            <motion.div
-                              initial={{ opacity: 0, x: -20, scale: 0.95 }}
-                              animate={{ opacity: 1, x: 0, scale: 1 }}
-                              exit={{ opacity: 0, scale: 0.95 }}
-                              className="absolute right-full top-0 mr-4 w-80 bg-white border border-border rounded-sm shadow-xl p-6 z-50 arrow-right"
-                            >
-                              <div className="space-y-4">
-
-                                <div className="flex justify-between items-center">
-                                  <h4 className="font-serif italic text-lg">Why Exclude?</h4>
-                                  <button onClick={() => setShowExclusionInput(false)} className="text-muted hover:text-ink">
-                                    <X className="w-4 h-4" />
-                                  </button>
-                                </div>
-                                <p className="text-xs text-muted uppercase tracking-wider font-mono">Select a reason is required</p>
-
-                                <ExclusionReasonInputs
-                                  value={exclusionReason}
-                                  onChange={setExclusionReason}
-                                />
-
-                                <button
-                                  onClick={() => handleDecision('EXCLUDE')}
-                                  disabled={!exclusionReason}
-                                  className="w-full btn-editorial bg-rose-600 text-white hover:bg-rose-700 border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                  Confirm Exclusion
-                                </button>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
+                      {/* Exclude Button - Opens Modal */}
+                      <DecisionButton
+                        label="Exclude"
+                        shortcut="E"
+                        icon={<X className="w-8 h-8" />}
+                        color="red"
+                        active={currentStudy.userDecision === 'EXCLUDE'}
+                        loading={submitDecision.isPending}
+                        onClick={() => handleDecision('EXCLUDE')}
+                      />
 
                       <DecisionButton
                         label="Maybe"
@@ -851,13 +847,13 @@ export function ScreeningQueue() {
       {/* Footer Decisions (Normal Mode) */}
       {!isFocused && !isBatchMode && (
         <footer className={cn(
-          "fixed z-50 animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white/95 backdrop-blur-xl border border-border shadow-editorial flex justify-between items-center",
+          "fixed z-[60] animate-in fade-in slide-in-from-bottom-4 duration-700 bg-white/95 backdrop-blur-xl border border-border shadow-editorial flex justify-between items-center",
           // Desktop: Floating bottom right
           "md:bottom-12 md:right-12 md:left-auto md:w-auto md:p-8 md:rounded-sm md:gap-8",
           // Mobile: Fixed bottom full width
-          "bottom-0 left-0 right-0 w-full p-4 gap-4 rounded-t-xl border-x-0 border-b-0"
+          "bottom-0 left-0 right-0 w-full py-3 px-14 gap-2 md:p-4 md:gap-4 rounded-t-xl border-x-0 border-b-0"
         )}>
-          <div className="flex items-center gap-6 md:border-r md:border-border md:pr-8">
+          <div className="flex items-center gap-6 md:border-r md:border-border md:pr-8 hidden md:flex">
             <button
               onClick={previous}
               disabled={currentIndex === 0}
@@ -877,7 +873,7 @@ export function ScreeningQueue() {
               <ChevronRight className="w-6 h-6" />
             </button>
           </div>
-          <div className="flex gap-4 items-center flex-1 justify-end">
+          <div className="flex gap-2 md:gap-4 items-center flex-1 w-full md:w-auto justify-between md:justify-end">
             <div className="hidden md:flex gap-4 items-center mr-4">
               <ConfidenceSlider
                 value={confidence}
@@ -921,6 +917,18 @@ export function ScreeningQueue() {
           currentPhase={currentPhase as any}
         />
       )}
+
+      {/* Global Exclusion Reason Modal - Works from all entry points */}
+      <ExclusionReasonModal
+        isOpen={showExclusionModal}
+        onClose={() => {
+          setShowExclusionModal(false);
+          setPendingExclusionStudyId(null);
+        }}
+        onConfirm={handleConfirmExclusion}
+        studyTitle={studies.find(s => s.id === pendingExclusionStudyId)?.title}
+        isSubmitting={submitDecision.isPending}
+      />
     </div>
   );
 }
@@ -1015,11 +1023,11 @@ function DecisionButtonSmall({ label, color, active, loading, onClick }: {
       onClick={onClick}
       disabled={loading}
       className={cn(
-        "px-10 py-4 border border-border/40 font-serif italic text-xl transition-all rounded-sm disabled:opacity-50",
+        "flex-1 md:flex-none px-2 py-3 md:px-10 md:py-4 border border-border/40 font-serif italic text-sm md:text-xl transition-all rounded-sm disabled:opacity-50 whitespace-nowrap",
         active ? "bg-ink text-paper border-ink shadow-editorial translate-y-[-4px]" : colors[color]
       )}
     >
-      {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : label}
+      {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : label}
     </button>
   );
 }

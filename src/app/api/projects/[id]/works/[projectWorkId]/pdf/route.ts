@@ -1,19 +1,74 @@
 import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { uploadFile } from "@/lib/r2";
+import { getDownloadUrl, uploadFile } from "@/lib/r2";
 import {
   handleApiError,
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
   ValidationError,
+  success,
   created,
 } from "@/lib/api";
 import { BullMQIngestionQueue } from "@/infrastructure/jobs/ingestion-queue";
 
 interface RouteParams {
   params: Promise<{ id: string; projectWorkId: string }>;
+}
+
+// GET /api/projects/[id]/works/[projectWorkId]/pdf
+// Return a short-lived signed URL to view/download the study's full-text PDF (if attached).
+export async function GET(request: NextRequest, { params }: RouteParams) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      throw new UnauthorizedError();
+    }
+
+    const { id: projectId, projectWorkId } = await params;
+
+    const membership = await db.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: session.user.id } },
+    });
+    if (!membership) throw new NotFoundError("Project");
+
+    if (!["OWNER", "LEAD", "REVIEWER", "OBSERVER"].includes(membership.role)) {
+      throw new ForbiddenError("You don't have permission to access PDFs for this project");
+    }
+
+    const projectWork = await db.projectWork.findFirst({
+      where: { id: projectWorkId, projectId },
+      select: {
+        id: true,
+        pdfR2Key: true,
+        pdfUploadedAt: true,
+        pdfFileSize: true,
+        pdfSource: true,
+      },
+    });
+    if (!projectWork) throw new NotFoundError("Study");
+
+    if (!projectWork.pdfR2Key) {
+      throw new ValidationError("No full-text PDF is attached to this study yet");
+    }
+
+    const expiresIn = 15 * 60; // 15 minutes
+    const url = await getDownloadUrl(projectWork.pdfR2Key, expiresIn);
+
+    return success({
+      url,
+      expiresIn,
+      pdfR2Key: projectWork.pdfR2Key,
+      pdfUploadedAt: projectWork.pdfUploadedAt
+        ? projectWork.pdfUploadedAt.toISOString()
+        : null,
+      pdfFileSize: projectWork.pdfFileSize ?? null,
+      pdfSource: projectWork.pdfSource ?? null,
+    });
+  } catch (error) {
+    return handleApiError(error);
+  }
 }
 
 // POST /api/projects/[id]/works/[projectWorkId]/pdf

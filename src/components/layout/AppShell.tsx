@@ -263,11 +263,31 @@ function AvatarMenu() {
   const { data: session } = useSession();
   const user = session?.user;
   const isAdmin = user?.role === 'ADMIN';
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch by only rendering DropdownMenu on client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Get initials for avatar fallback
   const initials = user?.name
     ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
     : user?.email?.substring(0, 2).toUpperCase() || "??";
+
+  // Render button without dropdown until mounted to prevent hydration error
+  if (!mounted) {
+    return (
+      <button className="w-8 h-8 rounded-full bg-paper border border-border flex items-center justify-center overflow-hidden hover:border-ink transition-colors outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
+        {user?.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={user.image} alt={user.name || "User Avatar"} className="w-full h-full object-cover" />
+        ) : (
+          <div className="text-[10px] font-bold text-muted">{initials}</div>
+        )}
+      </button>
+    );
+  }
 
   return (
     <DropdownMenu.Root>
@@ -534,8 +554,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-paper scroll-smooth relative">
-          <div className="max-w-6xl mx-auto">
+        <div className={cn(
+          "flex-1 overflow-y-auto bg-paper scroll-smooth relative",
+          pathname.includes('/graphs') || pathname.includes('/graph') ? "p-0" : "p-4 md:p-8"
+        )}>
+          <div className={cn(
+            "mx-auto",
+            pathname.includes('/graphs') || pathname.includes('/graph') ? "max-w-none h-full" : "max-w-6xl"
+          )}>
             {children}
           </div>
         </div>

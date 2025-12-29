@@ -10,7 +10,9 @@ import {
   Settings,
   BookOpen,
   Plus,
-  Loader2
+  Loader2,
+  X,
+  Mail
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -18,6 +20,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCreateProject } from "../api/queries";
 import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type Step = 'basic' | 'pico' | 'team' | 'settings';
 
@@ -77,11 +81,27 @@ export function NewProjectWizard() {
       blindScreening: formData.blindScreening,
       // livingReview ignored for now as not in API schema
     }, {
-      onSuccess: (data) => {
-        toast.success("Project initialized successfully");
-        // Smart Navigation: Redirect to Import Lab for onboarding
+      onSuccess: async (data) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const projectId = (data as any).id;
+        
+        // Send invitations to team members
+        if (formData.team.length > 0) {
+          const invitePromises = formData.team.map(email =>
+            fetch(`/api/projects/${projectId}/members`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email, role: 'REVIEWER' }),
+            }).catch(err => console.error(`Failed to invite ${email}:`, err))
+          );
+          
+          await Promise.all(invitePromises);
+          toast.success(`Project created! ${formData.team.length} invitation(s) sent.`);
+        } else {
+          toast.success("Project initialized successfully");
+        }
+        
+        // Smart Navigation: Redirect to Import Lab for onboarding
         router.push(`/project/${projectId}/import`);
       },
       onError: (error) => {
@@ -202,13 +222,10 @@ export function NewProjectWizard() {
             )}
 
             {step === 'team' && (
-              <div className="space-y-8 text-center py-20 border-2 border-dashed border-border group hover:border-ink transition-all cursor-pointer">
-                <div className="w-20 h-20 bg-paper rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-                  <Plus className="w-8 h-8 text-muted group-hover:text-ink" />
-                </div>
-                <h3 className="text-3xl font-serif">Invite Collaborators</h3>
-                <p className="text-muted font-serif italic max-w-sm mx-auto">Research is a collective endeavor. You can invite team members after creating the project.</p>
-              </div>
+              <TeamInviteStep 
+                emails={formData.team}
+                onEmailsChange={(emails) => setFormData({ ...formData, team: emails })}
+              />
             )}
 
             {step === 'settings' && (
@@ -312,6 +329,129 @@ function PICOField({ label, title, description, value, onChange }: { label: stri
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-paper border border-border focus:border-ink px-4 py-3 font-serif outline-none transition-all placeholder:text-muted/40"
       />
+    </div>
+  );
+}
+
+function TeamInviteStep({ emails, onEmailsChange }: { emails: string[], onEmailsChange: (emails: string[]) => void }) {
+  const [inputValue, setInputValue] = useState("");
+  const [error, setError] = useState("");
+
+  const validateEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const addEmail = () => {
+    const email = inputValue.trim().toLowerCase();
+    
+    if (!email) return;
+    
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+    
+    if (emails.includes(email)) {
+      setError("This email has already been added");
+      return;
+    }
+    
+    onEmailsChange([...emails, email]);
+    setInputValue("");
+    setError("");
+  };
+
+  const removeEmail = (emailToRemove: string) => {
+    onEmailsChange(emails.filter(e => e !== emailToRemove));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addEmail();
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="space-y-2">
+        <h3 className="font-serif text-3xl">Invite Collaborators</h3>
+        <p className="text-muted font-serif italic">Research is a collective endeavor. Add team members to collaborate on screening and review.</p>
+      </div>
+
+      {/* Email Input */}
+      <div className="space-y-3">
+        <label className="font-mono text-[10px] uppercase tracking-widest text-muted">
+          Collaborator Email
+        </label>
+        <div className="flex gap-3">
+          <div className="flex-1 relative">
+            <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
+            <Input
+              type="email"
+              placeholder="colleague@university.edu"
+              value={inputValue}
+              onChange={(e) => {
+                setInputValue(e.target.value);
+                setError("");
+              }}
+              onKeyDown={handleKeyDown}
+              className="pl-12 h-14 text-lg font-serif border-border focus:border-ink"
+            />
+          </div>
+          <Button 
+            type="button"
+            onClick={addEmail}
+            className="h-14 px-6 bg-ink text-paper hover:bg-ink/90"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add
+          </Button>
+        </div>
+        {error && (
+          <p className="text-red-500 text-sm font-serif italic">{error}</p>
+        )}
+      </div>
+
+      {/* Added Emails List */}
+      {emails.length > 0 ? (
+        <div className="space-y-3">
+          <label className="font-mono text-[10px] uppercase tracking-widest text-muted">
+            Pending Invitations ({emails.length})
+          </label>
+          <div className="space-y-2">
+            {emails.map((email) => (
+              <div
+                key={email}
+                className="flex items-center justify-between p-4 bg-paper border border-border hover:border-ink transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-ink/5 rounded-full flex items-center justify-center">
+                    <Users className="w-5 h-5 text-ink/60" />
+                  </div>
+                  <div>
+                    <p className="font-serif">{email}</p>
+                    <p className="text-xs text-muted font-mono uppercase tracking-wider">Reviewer</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeEmail(email)}
+                  className="p-2 text-muted hover:text-red-500 hover:bg-red-50 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-12 border-2 border-dashed border-border">
+          <Users className="w-12 h-12 mx-auto mb-4 text-muted/40" />
+          <p className="text-muted font-serif italic">No collaborators added yet</p>
+          <p className="text-sm text-muted/60 mt-1">You can also invite team members after creating the project</p>
+        </div>
+      )}
     </div>
   );
 }

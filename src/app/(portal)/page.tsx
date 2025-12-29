@@ -9,36 +9,36 @@ export default function LandingPage() {
     return (
         <div className="min-h-screen bg-paper text-ink font-sans selection:bg-ink selection:text-paper">
             {/* Navigation */}
-            <nav className="fixed top-0 w-full z-50 bg-paper/80 backdrop-blur-md border-b border-border/40 px-8 py-6 flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 bg-ink rounded-sm flex items-center justify-center text-paper font-serif italic text-xl">L</div>
-                    <span className="font-serif text-2xl tracking-tight">LitLens</span>
+            <nav className="fixed top-0 w-full z-50 bg-paper/80 backdrop-blur-md border-b border-border/40 px-4 md:px-8 py-4 md:py-6 flex justify-between items-center">
+                <div className="flex items-center gap-3 md:gap-4">
+                    <div className="w-6 h-6 md:w-8 md:h-8 bg-ink rounded-sm flex items-center justify-center text-paper font-serif italic text-lg md:text-xl">L</div>
+                    <span className="font-serif text-xl md:text-2xl tracking-tight">LitLens</span>
                 </div>
-                <div className="flex items-center gap-8">
-                    <Link href="#features" className="text-[10px] font-mono uppercase tracking-[0.2em] hover:text-intel-blue transition-colors">Features</Link>
-                    <Link href="#methodology" className="text-[10px] font-mono uppercase tracking-[0.2em] hover:text-intel-blue transition-colors">Methodology</Link>
+                <div className="flex items-center gap-4 md:gap-8">
+                    <Link href="#features" className="hidden md:block text-[10px] font-mono uppercase tracking-[0.2em] hover:text-intel-blue transition-colors">Features</Link>
+                    <Link href="#methodology" className="hidden md:block text-[10px] font-mono uppercase tracking-[0.2em] hover:text-intel-blue transition-colors">Methodology</Link>
                     <Link href="/dashboard">
-                        <button className="btn-editorial py-2 px-6">Enter Workspace</button>
+                        <button className="btn-editorial py-1.5 md:py-2 px-4 md:px-6 text-sm md:text-base">Enter Workspace</button>
                     </Link>
                 </div>
             </nav>
 
             {/* Hero Section */}
-            <section className="relative pt-40 pb-32 overflow-hidden">
+            <section className="relative pt-24 md:pt-40 pb-20 md:pb-32 overflow-hidden">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-intel-blue/5 blur-[120px] rounded-full -z-10" />
 
-                <div className="max-w-6xl mx-auto px-8 text-center space-y-12">
+                <div className="max-w-6xl mx-auto px-6 md:px-8 text-center space-y-8 md:space-y-12">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.8, ease: "easeOut" }}
-                        className="space-y-6"
+                        className="space-y-4 md:space-y-6"
                     >
-                        <span className="inline-flex items-center gap-2 px-4 py-1.5 bg-ink text-paper text-[10px] font-mono uppercase tracking-[0.3em] rounded-full">
-                            <Sparkles className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-2 px-3 py-1 md:px-4 md:py-1.5 bg-ink text-paper text-[9px] md:text-[10px] font-mono uppercase tracking-[0.3em] rounded-full">
+                            <Sparkles className="w-2.5 h-2.5 md:w-3 md:h-3" />
                             Intelligence Reimagined
                         </span>
-                        <h1 className="text-8xl md:text-[10rem] font-serif tracking-tighter leading-[0.85] text-ink italic">
+                        <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-[10rem] font-serif tracking-tighter leading-[0.9] md:leading-[0.85] text-ink italic">
                             Evidence, <br />
                             <span className="not-italic opacity-20">Synthesized.</span>
                         </h1>
@@ -48,7 +48,7 @@ export default function LandingPage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
-                        className="text-2xl md:text-3xl font-serif italic text-muted max-w-3xl mx-auto leading-relaxed"
+                        className="text-xl md:text-2xl lg:text-3xl font-serif italic text-muted max-w-3xl mx-auto leading-relaxed"
                     >
                         A distinctive, AI-powered platform for systematic reviews, mapping the intellectual lineage of global knowledge with academic rigor.
                     </motion.p>
@@ -57,15 +57,15 @@ export default function LandingPage() {
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
-                        className="flex flex-col sm:flex-row items-center justify-center gap-6 pt-8"
+                        className="flex flex-col sm:flex-row items-center justify-center gap-4 md:gap-6 pt-4 md:pt-8"
                     >
-                        <Link href="/dashboard">
-                            <button className="btn-editorial text-2xl px-12 py-6 flex items-center gap-4 group">
+                        <Link href="/dashboard" className="w-full sm:w-auto">
+                            <button className="btn-editorial text-xl md:text-2xl px-8 md:px-12 py-4 md:py-6 flex items-center justify-center gap-4 group w-full">
                                 Begin Investigation
-                                <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+                                <ArrowRight className="w-5 h-5 md:w-6 md:h-6 group-hover:translate-x-1 transition-transform" />
                             </button>
                         </Link>
-                        <button className="text-sm font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors px-12 py-6 border border-border hover:bg-white bg-transparent rounded-sm">
+                        <button className="text-xs md:text-sm font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors px-8 md:px-12 py-4 md:py-6 border border-border hover:bg-white bg-transparent rounded-sm w-full sm:w-auto">
                             Watch the Film
                         </button>
                     </motion.div>
@@ -73,18 +73,18 @@ export default function LandingPage() {
             </section>
 
             {/* Feature High-Fidelity Glimpse (Research Graph) */}
-            <section id="features" className="py-32 bg-white border-y border-border/50 overflow-hidden">
-                <div className="max-w-7xl mx-auto px-8">
-                    <div className="editorial-grid items-center gap-20">
-                        <div className="col-span-12 md:col-span-5 space-y-8">
+            <section id="features" className="py-20 md:py-32 bg-white border-y border-border/50 overflow-hidden">
+                <div className="max-w-7xl mx-auto px-6 md:px-8">
+                    <div className="editorial-grid items-center gap-12 md:gap-20">
+                        <div className="col-span-12 md:col-span-5 space-y-6 md:space-y-8">
                             <div className="space-y-4">
-                                <h2 className="text-5xl font-serif">A Living Map of <span className="italic">Human Thought</span></h2>
-                                <p className="text-xl font-serif italic text-muted leading-relaxed">
+                                <h2 className="text-4xl md:text-5xl font-serif">A Living Map of <span className="italic">Human Thought</span></h2>
+                                <p className="text-lg md:text-xl font-serif italic text-muted leading-relaxed">
                                     Our dynamic citation engine doesn&apos;t just list references—it visualizes the intellectual gravity of every paper, uncovering hidden connections in your field.
                                 </p>
                             </div>
 
-                            <div className="space-y-6 pt-8 border-t border-border/40">
+                            <div className="space-y-6 pt-6 md:pt-8 border-t border-border/40">
                                 <FeatureItem icon={<Network className="w-5 h-5" />} title="Force-Directed Lineage" description="Real-time mapping of citation clusters and influence networks." />
                                 <FeatureItem icon={<Brain className="w-5 h-5" />} title="AI-Aided Screening" description="Transformers that learn your inclusion criteria with every decision." />
                                 <FeatureItem icon={<Search className="w-5 h-5" />} title="Discovery Intelligence" description="Autonomous agents that scour the deep web for relevant evidence." />
@@ -95,38 +95,38 @@ export default function LandingPage() {
                             <div className="aspect-[4/3] bg-paper border border-border shadow-editorial rounded-sm overflow-hidden relative">
                                 {/* Visual Placeholder for Graph Demo */}
                                 <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                                    <Network className="w-64 h-64" />
+                                    <Network className="w-32 h-32 md:w-64 md:h-64" />
                                 </div>
-                                <div className="absolute top-8 left-8 p-4 bg-white/80 backdrop-blur-sm border border-border shadow-sm max-w-xs space-y-2">
-                                    <div className="h-1 w-12 bg-intel-blue" />
-                                    <h4 className="font-serif italic font-bold">Citation Cluster: LLM Safety</h4>
-                                    <p className="text-[10px] font-mono text-muted uppercase">42 core papers found • Growth: 400% YoY</p>
+                                <div className="absolute top-4 md:top-8 left-4 md:left-8 p-3 md:p-4 bg-white/80 backdrop-blur-sm border border-border shadow-sm max-w-[200px] md:max-w-xs space-y-1 md:space-y-2">
+                                    <div className="h-0.5 md:h-1 w-8 md:w-12 bg-intel-blue" />
+                                    <h4 className="font-serif italic font-bold text-sm md:text-base">Citation Cluster: LLM Safety</h4>
+                                    <p className="text-[8px] md:text-[10px] font-mono text-muted uppercase">42 core papers found • Growth: 400% YoY</p>
                                 </div>
                             </div>
-                            <div className="absolute -bottom-8 -right-8 w-64 h-64 bg-intel-blue/10 blur-[80px] rounded-full -z-10" />
+                            <div className="absolute -bottom-8 -right-8 w-48 h-48 md:w-64 md:h-64 bg-intel-blue/10 blur-[60px] md:blur-[80px] rounded-full -z-10" />
                         </div>
                     </div>
                 </div>
             </section>
 
             {/* Philosophy Section */}
-            <section id="methodology" className="py-40 relative">
-                <div className="max-w-4xl mx-auto px-8 text-center space-y-12">
-                    <h2 className="text-6xl font-serif italic tracking-tight">&ldquo;The quality of a review is determined by the depth of its lens.&rdquo;</h2>
-                    <div className="accent-line mx-auto w-24 opacity-20" />
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-left pt-12">
+            <section id="methodology" className="py-24 md:py-40 relative">
+                <div className="max-w-4xl mx-auto px-6 md:px-8 text-center space-y-8 md:space-y-12">
+                    <h2 className="text-4xl md:text-6xl font-serif italic tracking-tight leading-tight">&ldquo;The quality of a review is determined by the depth of its lens.&rdquo;</h2>
+                    <div className="accent-line mx-auto w-16 md:w-24 opacity-20" />
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12 text-left pt-8 md:pt-12">
                         <div className="space-y-4">
-                            <BookOpen className="w-8 h-8 text-ink opacity-20" />
+                            <BookOpen className="w-6 h-6 md:w-8 md:h-8 text-ink opacity-20" />
                             <h4 className="font-mono text-[10px] uppercase tracking-widest text-muted">Editorial Precision</h4>
                             <p className="font-serif italic text-sm leading-relaxed">Designed for focus. We remove the noise of generic SaaS to prioritize the scholarly experience.</p>
                         </div>
                         <div className="space-y-4">
-                            <ShieldCheck className="w-8 h-8 text-ink opacity-20" />
+                            <ShieldCheck className="w-6 h-6 md:w-8 md:h-8 text-ink opacity-20" />
                             <h4 className="font-mono text-[10px] uppercase tracking-widest text-muted">Permanent Audit</h4>
                             <p className="font-serif italic text-sm leading-relaxed">Every decision is logged in a permanent, immutable trail for methodological transparency.</p>
                         </div>
                         <div className="space-y-4">
-                            <Sparkles className="w-8 h-8 text-ink opacity-20" />
+                            <Sparkles className="w-6 h-6 md:w-8 md:h-8 text-ink opacity-20" />
                             <h4 className="font-mono text-[10px] uppercase tracking-widest text-muted">AI Partnership</h4>
                             <p className="font-serif italic text-sm leading-relaxed">AI that acts as a junior investigator, not a black box, explaining its reasoning at every step.</p>
                         </div>
@@ -135,16 +135,16 @@ export default function LandingPage() {
             </section>
 
             {/* CTA Section */}
-            <footer className="bg-ink text-paper py-32 mt-20">
-                <div className="max-w-5xl mx-auto px-8 text-center space-y-12">
-                    <h2 className="text-6xl font-serif">Begin your next review.</h2>
-                    <p className="text-xl font-serif italic text-paper/60 pb-8">Join the investigative elite bridging the gap between data and insight.</p>
+            <footer className="bg-ink text-paper py-20 md:py-32 mt-10 md:mt-20">
+                <div className="max-w-5xl mx-auto px-6 md:px-8 text-center space-y-8 md:space-y-12">
+                    <h2 className="text-4xl md:text-6xl font-serif">Begin your next review.</h2>
+                    <p className="text-lg md:text-xl font-serif italic text-paper/60 pb-4 md:pb-8">Join the investigative elite bridging the gap between data and insight.</p>
                     <Link href="/dashboard">
-                        <button className="bg-white text-ink px-16 py-8 text-2xl font-serif hover:bg-paper transition-colors rounded-sm shadow-editorial">
+                        <button className="bg-white text-ink px-10 md:px-16 py-6 md:py-8 text-xl md:text-2xl font-serif hover:bg-paper transition-colors rounded-sm shadow-editorial">
                             Inaugurate Project
                         </button>
                     </Link>
-                    <div className="pt-24 border-t border-white/10 flex justify-between items-center text-[10px] font-mono uppercase tracking-[0.3em] text-paper/30">
+                    <div className="pt-16 md:pt-24 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-8 text-[10px] font-mono uppercase tracking-[0.3em] text-paper/30">
                         <span>© 2025 LitLens Intelligence</span>
                         <div className="flex gap-8">
                             <a href="#">Privacy</a>
@@ -160,13 +160,13 @@ export default function LandingPage() {
 
 function FeatureItem({ icon, title, description }: { icon: React.ReactNode, title: string, description: string }) {
     return (
-        <div className="flex gap-6 group cursor-default">
-            <div className="w-12 h-12 border border-border flex items-center justify-center shrink-0 group-hover:border-ink group-hover:bg-paper transition-all">
+        <div className="flex gap-4 md:gap-6 group cursor-default">
+            <div className="w-10 h-10 md:w-12 md:h-12 border border-border flex items-center justify-center shrink-0 group-hover:border-ink group-hover:bg-paper transition-all">
                 {icon}
             </div>
             <div className="space-y-1">
-                <h3 className="font-serif font-bold italic text-lg leading-none group-hover:text-intel-blue transition-colors">{title}</h3>
-                <p className="text-sm font-serif italic text-muted leading-relaxed opacity-60 group-hover:opacity-100 transition-opacity">{description}</p>
+                <h3 className="font-serif font-bold italic text-base md:text-lg leading-none group-hover:text-intel-blue transition-colors">{title}</h3>
+                <p className="text-xs md:text-sm font-serif italic text-muted leading-relaxed opacity-60 group-hover:opacity-100 transition-opacity">{description}</p>
             </div>
         </div>
     );

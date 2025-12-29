@@ -78,7 +78,7 @@ export interface CreateDecisionData {
 }
 
 export interface ProjectWorkUpdate {
-  status: string;
+  status: "PENDING" | "SCREENING" | "CONFLICT" | "INCLUDED" | "EXCLUDED" | "MAYBE";
   phase?: ScreeningPhase;
   finalDecision?: ScreeningDecision | null;
 }

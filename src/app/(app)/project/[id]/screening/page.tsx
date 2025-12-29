@@ -14,7 +14,7 @@ import { PhaseManager } from "@/features/screening/components/PhaseManager";
 export default async function ScreeningPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   return (
-    <div className="space-y-8 max-w-7xl mx-auto px-6 py-8">
+    <div className="space-y-4 md:space-y-8 max-w-7xl mx-auto px-2 md:px-6 py-4 md:py-8 pb-32 md:pb-8">
       <div>
         <PhaseManager projectId={id} />
       </div>

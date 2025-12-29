@@ -33,15 +33,33 @@
   .editorial-grid {
     display: grid;
     grid-template-columns: repeat(12, 1fr);
-    gap: 1.5rem;
+    gap: 1rem;
+  }
+
+  @media (min-width: 768px) {
+    .editorial-grid {
+      gap: 1.5rem;
+    }
   }
 
   .grid-aside {
-    grid-column: span 3;
+    grid-column: span 12;
+  }
+
+  @media (min-width: 768px) {
+    .grid-aside {
+      grid-column: span 3;
+    }
   }
 
   .grid-main {
-    grid-column: span 9;
+    grid-column: span 12;
+  }
+
+  @media (min-width: 768px) {
+    .grid-main {
+      grid-column: span 9;
+    }
   }
 }
 

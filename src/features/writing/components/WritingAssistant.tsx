@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -12,17 +12,22 @@ import {
   Save,
   Download,
   Check,
-  AlertCircle,
   Trash2,
   BookOpen,
   Copy,
   FileDown,
   ChevronDown,
+  Pencil,
+  Clock,
+  Eye,
+  CheckCircle2,
+  ArrowRight,
+  CircleDot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import RichTextEditor from "@/components/editor/RichTextEditor";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { CommonDialog } from "@/components/ui/common-dialog";
 import {
@@ -33,22 +38,81 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+type WritingStatus = "DRAFT" | "IN_PROGRESS" | "REVIEW" | "COMPLETE";
+
 interface WritingProject {
   id: string;
   title: string;
   type: string;
-  status: "DRAFT" | "IN_PROGRESS" | "REVIEW" | "COMPLETE";
+  status: WritingStatus;
   content: { type: string; content: unknown[] } | null;
   wordCount: number;
   citationStyle: string;
   targetLength: number | null;
   updatedAt: string;
-  sources?: any[];
+  sources?: unknown[];
 }
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+// Status configuration with colors, icons, and labels
+const STATUS_CONFIG: Record<WritingStatus, {
+  label: string;
+  icon: typeof Pencil;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  description: string;
+}> = {
+  DRAFT: {
+    label: "Draft",
+    icon: Pencil,
+    color: "text-slate-600",
+    bgColor: "bg-slate-50",
+    borderColor: "border-slate-200",
+    description: "Initial drafting phase",
+  },
+  IN_PROGRESS: {
+    label: "In Progress",
+    icon: Clock,
+    color: "text-amber-600",
+    bgColor: "bg-amber-50",
+    borderColor: "border-amber-200",
+    description: "Actively being worked on",
+  },
+  REVIEW: {
+    label: "In Review",
+    icon: Eye,
+    color: "text-blue-600",
+    bgColor: "bg-blue-50",
+    borderColor: "border-blue-200",
+    description: "Ready for review",
+  },
+  COMPLETE: {
+    label: "Complete",
+    icon: CheckCircle2,
+    color: "text-emerald-600",
+    bgColor: "bg-emerald-50",
+    borderColor: "border-emerald-200",
+    description: "Finalized and complete",
+  },
+};
+
+const STATUS_ORDER: WritingStatus[] = ["DRAFT", "IN_PROGRESS", "REVIEW", "COMPLETE"];
+
+function getNextStatus(current: WritingStatus): WritingStatus | null {
+  const idx = STATUS_ORDER.indexOf(current);
+  if (idx === -1 || idx === STATUS_ORDER.length - 1) return null;
+  return STATUS_ORDER[idx + 1];
+}
+
+function getPrevStatus(current: WritingStatus): WritingStatus | null {
+  const idx = STATUS_ORDER.indexOf(current);
+  if (idx <= 0) return null;
+  return STATUS_ORDER[idx - 1];
 }
 
 export function WritingAssistant() {
@@ -64,7 +128,9 @@ export function WritingAssistant() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [draftToDelete, setDraftToDelete] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Set<WritingStatus>>(new Set(["DRAFT", "IN_PROGRESS"]));
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const contentJsonRef = useRef<object | null>(null);
 
   // Fetch writing projects
   const { data: projectsData, isLoading: isLoadingProjects } = useQuery({
@@ -76,6 +142,46 @@ export function WritingAssistant() {
       return json.data as WritingProject[];
     },
   });
+
+  // Group projects by status
+  const projectsByStatus = useMemo(() => {
+    if (!projectsData) return {} as Record<WritingStatus, WritingProject[]>;
+    
+    const grouped: Record<WritingStatus, WritingProject[]> = {
+      DRAFT: [],
+      IN_PROGRESS: [],
+      REVIEW: [],
+      COMPLETE: [],
+    };
+    
+    projectsData.forEach((project) => {
+      if (grouped[project.status]) {
+        grouped[project.status].push(project);
+      }
+    });
+    
+    return grouped;
+  }, [projectsData]);
+
+  // Count totals per status
+  const statusCounts = useMemo(() => {
+    const counts: Record<WritingStatus, number> = {
+      DRAFT: 0,
+      IN_PROGRESS: 0,
+      REVIEW: 0,
+      COMPLETE: 0,
+    };
+    
+    if (projectsData) {
+      projectsData.forEach((p) => {
+        if (counts[p.status] !== undefined) {
+          counts[p.status]++;
+        }
+      });
+    }
+    
+    return counts;
+  }, [projectsData]);
 
   // Fetch active project details
   const { data: activeProject, isLoading: isLoadingActive } = useQuery({
@@ -93,11 +199,9 @@ export function WritingAssistant() {
   // Set local content when active project loads
   useEffect(() => {
     if (activeProject?.content) {
-      // Content is stored as TipTap JSON - pass it directly to the editor
       setLocalContent(activeProject.content);
       contentJsonRef.current = activeProject.content;
     } else {
-      // Initialize with empty TipTap document structure
       const emptyContent = {
         type: "doc",
         content: [
@@ -140,6 +244,8 @@ export function WritingAssistant() {
       setActiveDraftId(data.data.id);
       setShowNewDraft(false);
       setNewDraftTitle("");
+      // Ensure DRAFT section is expanded
+      setExpandedSections((prev) => new Set([...prev, "DRAFT"]));
     },
   });
 
@@ -161,6 +267,26 @@ export function WritingAssistant() {
     },
     onError: () => {
       setIsSaving(false);
+    },
+  });
+
+  // Update status mutation
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: WritingStatus }) => {
+      const res = await fetch(`/api/writing/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error("Failed to update status");
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["writing-projects"] });
+      queryClient.invalidateQueries({ queryKey: ["writing-project", variables.id] });
+      // Expand the new status section
+      setExpandedSections((prev) => new Set([...prev, variables.status]));
     },
   });
 
@@ -195,9 +321,6 @@ export function WritingAssistant() {
       }, 2000);
     }
   }, [activeDraftId, saveMutation]);
-
-  // Manual save (store JSON in ref to avoid stale closure)
-  const contentJsonRef = useRef<object | null>(null);
 
   const handleContentChangeWithRef = useCallback((json: object, html: string) => {
     contentJsonRef.current = json;
@@ -247,7 +370,6 @@ export function WritingAssistant() {
     });
     const text = await res.text();
     await navigator.clipboard.writeText(text);
-    // You could add a toast notification here
   };
 
   // Chat with AI copilot
@@ -289,31 +411,49 @@ export function WritingAssistant() {
     }
   };
 
-  const getStatusLabel = (status: WritingProject["status"]) => {
-    switch (status) {
-      case "DRAFT": return "Draft";
-      case "IN_PROGRESS": return "In Progress";
-      case "REVIEW": return "Review";
-      case "COMPLETE": return "Complete";
-      default: return "Draft";
-    }
-  };
-
   const getWordCount = () => {
     if (!localContent) return 0;
-    if (typeof localContent !== "string") return 0; // Skip for JSON objects
+    if (typeof localContent !== "string") return 0;
     const text = localContent.replace(/<[^>]*>/g, "");
     return text.split(/\s+/).filter(Boolean).length;
   };
 
+  const toggleSection = (status: WritingStatus) => {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  };
+
+  const handleStatusChange = (newStatus: WritingStatus) => {
+    if (activeDraftId && activeProject?.status !== newStatus) {
+      updateStatusMutation.mutate({ id: activeDraftId, status: newStatus });
+    }
+  };
+
+  const handleAdvanceStatus = () => {
+    if (activeDraftId && activeProject) {
+      const nextStatus = getNextStatus(activeProject.status);
+      if (nextStatus) {
+        updateStatusMutation.mutate({ id: activeDraftId, status: nextStatus });
+      }
+    }
+  };
+
   return (
-    <div className="space-y-12 pb-20 h-full flex flex-col">
+    <div className="space-y-8 pb-20 h-full flex flex-col">
+      {/* Header */}
       <header className="flex justify-between items-end">
-        <div className="space-y-4">
-          <h1 className="text-6xl font-serif">Writing Studio</h1>
-          <p className="text-muted font-serif italic text-xl">Synthesize findings into coherent scholarly narrative.</p>
+        <div className="space-y-3">
+          <h1 className="text-5xl font-serif">Writing Studio</h1>
+          <p className="text-muted font-serif italic text-lg">Synthesize findings into coherent scholarly narrative.</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           {activeDraftId && (
             <>
               <DropdownMenu>
@@ -370,76 +510,277 @@ export function WritingAssistant() {
 
       <div className="accent-line" />
 
-      {/* Save status indicator */}
-      {activeDraftId && (
-        <div className="flex items-center gap-4 text-xs font-mono text-muted">
-          <span>{getWordCount()} words</span>
-          <span className="w-1 h-1 bg-border rounded-full" />
-          {isSaving ? (
-            <span className="flex items-center gap-1">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Saving...
-            </span>
-          ) : lastSaved ? (
-            <span className="flex items-center gap-1 text-emerald-600">
-              <Check className="w-3 h-3" />
-              Saved {lastSaved.toLocaleTimeString()}
-            </span>
-          ) : null}
+      {/* Status Bar for Active Project */}
+      {activeDraftId && activeProject && (
+        <div className="flex items-center justify-between bg-paper border border-border p-4">
+          <div className="flex items-center gap-6">
+            {/* Current Status Badge */}
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-muted">Status</span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button 
+                    className={cn(
+                      "px-3 py-1.5 text-xs font-mono uppercase tracking-wider flex items-center gap-2 border transition-all hover:opacity-80",
+                      STATUS_CONFIG[activeProject.status].bgColor,
+                      STATUS_CONFIG[activeProject.status].borderColor,
+                      STATUS_CONFIG[activeProject.status].color
+                    )}
+                    disabled={updateStatusMutation.isPending}
+                  >
+                    {updateStatusMutation.isPending ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <>
+                        {(() => {
+                          const Icon = STATUS_CONFIG[activeProject.status].icon;
+                          return <Icon className="w-3 h-3" />;
+                        })()}
+                      </>
+                    )}
+                    {STATUS_CONFIG[activeProject.status].label}
+                    <ChevronDown className="w-3 h-3 ml-1" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {STATUS_ORDER.map((status) => {
+                    const config = STATUS_CONFIG[status];
+                    const Icon = config.icon;
+                    const isActive = activeProject.status === status;
+                    return (
+                      <DropdownMenuItem
+                        key={status}
+                        onClick={() => handleStatusChange(status)}
+                        className={cn(
+                          "gap-3 py-2.5",
+                          isActive && "bg-paper"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-6 h-6 rounded-full flex items-center justify-center",
+                          config.bgColor
+                        )}>
+                          <Icon className={cn("w-3.5 h-3.5", config.color)} />
+                        </div>
+                        <div className="flex-1">
+                          <div className={cn(
+                            "text-sm font-medium",
+                            isActive && "font-semibold"
+                          )}>
+                            {config.label}
+                          </div>
+                          <div className="text-[10px] text-muted">{config.description}</div>
+                        </div>
+                        {isActive && <Check className="w-4 h-4 text-emerald-600" />}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Workflow Progress */}
+            <div className="hidden md:flex items-center gap-1">
+              {STATUS_ORDER.map((status, idx) => {
+                const config = STATUS_CONFIG[status];
+                const Icon = config.icon;
+                const isActive = activeProject.status === status;
+                const isPast = STATUS_ORDER.indexOf(activeProject.status) > idx;
+                const isLast = idx === STATUS_ORDER.length - 1;
+                
+                return (
+                  <div key={status} className="flex items-center">
+                    <button
+                      onClick={() => handleStatusChange(status)}
+                      className={cn(
+                        "w-7 h-7 rounded-full flex items-center justify-center transition-all",
+                        isActive 
+                          ? cn(config.bgColor, config.color, "ring-2 ring-offset-1", config.borderColor.replace("border-", "ring-"))
+                          : isPast
+                            ? "bg-emerald-100 text-emerald-600"
+                            : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                      )}
+                      title={config.label}
+                    >
+                      {isPast && !isActive ? (
+                        <Check className="w-3.5 h-3.5" />
+                      ) : (
+                        <Icon className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    {!isLast && (
+                      <div className={cn(
+                        "w-6 h-0.5 mx-0.5",
+                        isPast ? "bg-emerald-300" : "bg-gray-200"
+                      )} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Word count & save status */}
+            <div className="flex items-center gap-4 text-xs font-mono text-muted border-l border-border pl-6">
+              <span>{getWordCount()} words</span>
+              <span className="w-1 h-1 bg-border rounded-full" />
+              {isSaving ? (
+                <span className="flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  Saving...
+                </span>
+              ) : lastSaved ? (
+                <span className="flex items-center gap-1 text-emerald-600">
+                  <Check className="w-3 h-3" />
+                  Saved {lastSaved.toLocaleTimeString()}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Quick Advance Button */}
+          {getNextStatus(activeProject.status) && (
+            <button
+              onClick={handleAdvanceStatus}
+              disabled={updateStatusMutation.isPending}
+              className={cn(
+                "px-4 py-2 text-[10px] font-mono uppercase tracking-widest flex items-center gap-2 transition-all",
+                "bg-ink text-paper hover:bg-ink/90 disabled:opacity-50"
+              )}
+            >
+              {updateStatusMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>
+                  Move to {STATUS_CONFIG[getNextStatus(activeProject.status)!].label}
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          )}
         </div>
       )}
 
-      <div className="editorial-grid gap-12 flex-1">
-        {/* Sidebar: Drafts */}
-        <aside className="col-span-12 md:col-span-3 space-y-12 overflow-y-auto">
-          <div className="space-y-6">
-            <h3 className="font-mono text-[10px] uppercase tracking-widest text-muted">Drafting</h3>
-            {isLoadingProjects ? (
-              <div className="flex items-center gap-2 text-muted">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Loading...
-              </div>
-            ) : projectsData && projectsData.length > 0 ? (
-              <nav className="space-y-4">
-                {projectsData.map((project) => (
-                  <DraftItem
-                    key={project.id}
-                    title={project.title}
-                    status={getStatusLabel(project.status)}
-                    active={project.id === activeDraftId}
-                    onClick={() => setActiveDraftId(project.id)}
-                    onDelete={() => setDraftToDelete(project.id)}
-                  />
-                ))}
-              </nav>
-            ) : (
-              <div className="text-center py-8">
-                <BookOpen className="w-8 h-8 mx-auto text-muted/50 mb-2" />
-                <p className="text-sm text-muted font-serif italic">No drafts yet</p>
-                <button
-                  onClick={() => setShowNewDraft(true)}
-                  className="mt-2 text-intel-blue text-sm font-mono"
-                >
-                  Create your first draft
-                </button>
-              </div>
-            )}
-          </div>
+      <div className="editorial-grid gap-8 flex-1 min-h-0">
+        {/* Sidebar: Drafts grouped by status */}
+        <aside className="col-span-12 md:col-span-3 space-y-6 overflow-y-auto pr-2">
+          {isLoadingProjects ? (
+            <div className="flex items-center gap-2 text-muted py-8">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Loading...
+            </div>
+          ) : projectsData && projectsData.length > 0 ? (
+            <div className="space-y-4">
+              {STATUS_ORDER.map((status) => {
+                const config = STATUS_CONFIG[status];
+                const Icon = config.icon;
+                const projects = projectsByStatus[status] || [];
+                const isExpanded = expandedSections.has(status);
+                const count = statusCounts[status];
+                
+                return (
+                  <div key={status} className="border border-border overflow-hidden">
+                    <button
+                      onClick={() => toggleSection(status)}
+                      className={cn(
+                        "w-full px-4 py-3 flex items-center justify-between transition-colors",
+                        "hover:bg-paper/50",
+                        isExpanded && "border-b border-border"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "w-6 h-6 rounded-full flex items-center justify-center",
+                          config.bgColor
+                        )}>
+                          <Icon className={cn("w-3 h-3", config.color)} />
+                        </div>
+                        <span className="font-mono text-[10px] uppercase tracking-widest">
+                          {config.label}
+                        </span>
+                        <span className={cn(
+                          "px-1.5 py-0.5 text-[10px] font-mono rounded",
+                          count > 0 ? cn(config.bgColor, config.color) : "bg-gray-100 text-gray-400"
+                        )}>
+                          {count}
+                        </span>
+                      </div>
+                      <ChevronDown className={cn(
+                        "w-4 h-4 text-muted transition-transform",
+                        isExpanded && "rotate-180"
+                      )} />
+                    </button>
+                    
+                    {isExpanded && (
+                      <div className="bg-paper/30">
+                        {projects.length > 0 ? (
+                          <nav className="p-2 space-y-1">
+                            {projects.map((project) => (
+                              <DraftItem
+                                key={project.id}
+                                title={project.title}
+                                type={project.type}
+                                active={project.id === activeDraftId}
+                                onClick={() => setActiveDraftId(project.id)}
+                                onDelete={() => setDraftToDelete(project.id)}
+                                updatedAt={project.updatedAt}
+                              />
+                            ))}
+                          </nav>
+                        ) : (
+                          <div className="p-4 text-center">
+                            <p className="text-xs text-muted font-serif italic">No items</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-12 border border-dashed border-border">
+              <BookOpen className="w-10 h-10 mx-auto text-muted/40 mb-3" />
+              <p className="text-sm text-muted font-serif italic mb-3">No drafts yet</p>
+              <button
+                onClick={() => setShowNewDraft(true)}
+                className="text-intel-blue text-sm font-mono hover:underline"
+              >
+                Create your first draft
+              </button>
+            </div>
+          )}
         </aside>
 
         {/* Editor Main Area */}
-        <main className="col-span-12 md:col-span-6 space-y-8 flex flex-col">
+        <main className="col-span-12 md:col-span-6 flex flex-col min-h-0">
           <div className="bg-white border border-border flex-1 flex flex-col shadow-editorial overflow-hidden">
             {isLoadingActive ? (
               <div className="flex-1 flex items-center justify-center">
                 <Loader2 className="w-8 h-8 animate-spin text-muted" />
               </div>
-            ) : activeDraftId ? (
-              <RichTextEditor
-                content={localContent}
-                onChange={handleContentChangeWithRef}
-                placeholder="Start writing your research synthesis..."
-              />
+            ) : activeDraftId && activeProject ? (
+              <>
+                {/* Editor Header */}
+                <div className="px-6 py-4 border-b border-border bg-paper/50">
+                  <h2 className="font-serif text-xl">{activeProject.title}</h2>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-muted">
+                      {activeProject.type.replace(/_/g, " ")}
+                    </span>
+                    <CircleDot className="w-2 h-2 text-border" />
+                    <span className="text-[10px] font-mono text-muted">
+                      Updated {new Date(activeProject.updatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <RichTextEditor
+                    content={localContent}
+                    onChange={handleContentChangeWithRef}
+                    placeholder="Start writing your research synthesis..."
+                  />
+                </div>
+              </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-muted font-serif italic p-8">
                 <FileText className="w-12 h-12 mb-4 opacity-30" />
@@ -451,38 +792,34 @@ export function WritingAssistant() {
         </main>
 
         {/* AI Co-pilot Panel */}
-        <aside className="col-span-12 md:col-span-3 space-y-6 flex flex-col">
-          <div className="bg-ink text-paper flex-1 flex flex-col shadow-editorial max-h-[600px]">
-            <div className="p-6 border-b border-white/10 flex items-center gap-2">
+        <aside className="col-span-12 md:col-span-3 flex flex-col min-h-0">
+          <div className="bg-ink text-paper flex-1 flex flex-col shadow-editorial overflow-hidden">
+            <div className="p-5 border-b border-white/10 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-intel-blue" />
               <h3 className="font-mono text-[10px] uppercase tracking-widest">Intelligence Co-pilot</h3>
             </div>
 
-            <div className="flex-1 p-6 overflow-y-auto space-y-4">
+            <div className="flex-1 p-5 overflow-y-auto space-y-4">
               {chatMessages.length === 0 ? (
-                <>
+                <div className="space-y-3">
+                  <p className="text-xs font-serif italic text-paper/60">Ask me about:</p>
                   <div className="space-y-2">
-                    <p className="text-xs font-serif italic text-paper/60">Ask me about:</p>
-                    <div className="space-y-2">
-                      {[
-                        "How to structure this section",
-                        "Suggest citations for my claims",
-                        "Identify gaps in my argument",
-                        "Improve clarity and flow",
-                      ].map((suggestion, i) => (
-                        <button
-                          key={i}
-                          onClick={() => {
-                            setCopilotInput(suggestion);
-                          }}
-                          className="block w-full text-left p-3 bg-white/5 border border-white/10 text-sm font-serif italic leading-relaxed hover:bg-white/10 transition-colors"
-                        >
-                          {suggestion}
-                        </button>
-                      ))}
-                    </div>
+                    {[
+                      "How to structure this section",
+                      "Suggest citations for my claims",
+                      "Identify gaps in my argument",
+                      "Improve clarity and flow",
+                    ].map((suggestion, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCopilotInput(suggestion)}
+                        className="block w-full text-left p-3 bg-white/5 border border-white/10 text-sm font-serif italic leading-relaxed hover:bg-white/10 transition-colors"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
                   </div>
-                </>
+                </div>
               ) : (
                 chatMessages.map((msg, i) => (
                   <div
@@ -505,7 +842,7 @@ export function WritingAssistant() {
               )}
             </div>
 
-            <div className="p-6 border-t border-white/10">
+            <div className="p-5 border-t border-white/10">
               <div className="relative">
                 <input
                   type="text"
@@ -531,61 +868,74 @@ export function WritingAssistant() {
       {/* New Draft Dialog */}
       <Dialog open={showNewDraft} onOpenChange={setShowNewDraft}>
         <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-2xl">Create New Draft</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-6 py-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted">
-                Title
-              </label>
-              <Input
-                placeholder="e.g., Literature Review"
-                value={newDraftTitle}
-                onChange={(e) => setNewDraftTitle(e.target.value)}
-                className="font-serif text-lg"
-                autoFocus
-              />
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (newDraftTitle.trim()) {
+                createMutation.mutate({ title: newDraftTitle, type: newDraftType });
+              }
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle className="font-serif text-2xl">Create New Draft</DialogTitle>
+              <DialogDescription className="text-muted text-sm">
+                Start a new writing project for your research synthesis.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-6 py-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted">
+                  Title
+                </label>
+                <Input
+                  placeholder="e.g., Literature Review"
+                  value={newDraftTitle}
+                  onChange={(e) => setNewDraftTitle(e.target.value)}
+                  className="font-serif text-lg"
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted">
+                  Section Type
+                </label>
+                <select
+                  value={newDraftType}
+                  onChange={(e) => setNewDraftType(e.target.value)}
+                  className="w-full h-10 px-3 border border-border rounded-sm font-serif bg-white focus:border-ink outline-none"
+                >
+                  <option value="LITERATURE_REVIEW">Literature Review</option>
+                  <option value="BACKGROUND">Background</option>
+                  <option value="METHODS">Methods</option>
+                  <option value="RESULTS">Results</option>
+                  <option value="DISCUSSION">Discussion</option>
+                  <option value="ABSTRACT">Abstract</option>
+                </select>
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-mono uppercase tracking-widest text-muted">
-                Section Type
-              </label>
-              <select
-                value={newDraftType}
-                onChange={(e) => setNewDraftType(e.target.value)}
-                className="w-full h-10 px-3 border border-border rounded-sm font-serif bg-white focus:border-ink outline-none"
+            <DialogFooter className="flex-col-reverse sm:flex-row gap-2">
+              <Button 
+                type="button"
+                variant="outline" 
+                onClick={() => setShowNewDraft(false)}
+                className="w-full sm:w-auto"
               >
-                <option value="LITERATURE_REVIEW">Literature Review</option>
-                <option value="BACKGROUND">Background</option>
-                <option value="METHODS">Methods</option>
-                <option value="RESULTS">Results</option>
-                <option value="DISCUSSION">Discussion</option>
-                <option value="ABSTRACT">Abstract</option>
-              </select>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowNewDraft(false)}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (newDraftTitle.trim()) {
-                  createMutation.mutate({ title: newDraftTitle, type: newDraftType });
-                }
-              }}
-              disabled={!newDraftTitle.trim() || createMutation.isPending}
-              className="bg-ink text-paper hover:bg-ink/90"
-            >
-              {createMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <Plus className="w-4 h-4 mr-2" />
-              )}
-              Create Draft
-            </Button>
-          </DialogFooter>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!newDraftTitle.trim() || createMutation.isPending}
+                className="bg-ink text-paper hover:bg-ink/90 w-full sm:w-auto"
+              >
+                {createMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <Plus className="w-4 h-4 mr-2" />
+                )}
+                Create Draft
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
@@ -606,25 +956,29 @@ export function WritingAssistant() {
 
 interface DraftItemProps {
   title: string;
-  status: string;
+  type: string;
   active?: boolean;
   onClick?: () => void;
   onDelete?: () => void;
+  updatedAt: string;
 }
 
-function DraftItem({ title, status, active, onClick, onDelete }: DraftItemProps) {
+function DraftItem({ title, type, active, onClick, onDelete, updatedAt }: DraftItemProps) {
   return (
     <div
       onClick={onClick}
       className={cn(
-        "p-4 border border-border group cursor-pointer transition-all relative",
-        active ? "border-ink bg-white shadow-editorial" : "hover:border-ink hover:bg-paper"
+        "p-3 group cursor-pointer transition-all relative rounded-sm",
+        active 
+          ? "bg-white border border-ink shadow-sm" 
+          : "hover:bg-white/80 border border-transparent"
       )}
     >
-      <h4 className="font-serif italic text-lg leading-tight mb-2 group-hover:underline pr-6">{title}</h4>
-      <div className="flex justify-between items-center">
-        <span className="font-mono text-[10px] uppercase tracking-widest text-muted">{status}</span>
-        <ChevronRight className="w-4 h-4 text-border group-hover:text-ink" />
+      <h4 className="font-serif text-sm leading-tight mb-1 group-hover:text-ink pr-6 line-clamp-1">{title}</h4>
+      <div className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-wider text-muted">
+        <span>{type.replace(/_/g, " ")}</span>
+        <span className="w-0.5 h-0.5 bg-border rounded-full" />
+        <span>{new Date(updatedAt).toLocaleDateString()}</span>
       </div>
       {onDelete && (
         <button
@@ -636,6 +990,9 @@ function DraftItem({ title, status, active, onClick, onDelete }: DraftItemProps)
         >
           <Trash2 className="w-3 h-3" />
         </button>
+      )}
+      {active && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-ink rounded-r" />
       )}
     </div>
   );

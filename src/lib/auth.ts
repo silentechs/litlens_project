@@ -113,6 +113,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // Initial sign in
       if (user) {
         token.id = user.id;
+        token.name = user.name;
+        token.email = user.email;
+        token.picture = user.image;
         token.role = (user as { role?: string }).role || "USER";
       }
 
@@ -144,6 +147,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (token && session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        // Include name and image from token
+        if (token.name) session.user.name = token.name as string;
+        if (token.picture) session.user.image = token.picture as string;
       }
       return session;
     },
@@ -178,6 +184,68 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
           },
         }).catch(console.error);
+
+        // Process pending project invitations for this user's email
+        if (user.email) {
+          try {
+            const pendingInvitations = await db.projectInvitation.findMany({
+              where: {
+                email: user.email.toLowerCase(),
+                expiresAt: { gt: new Date() }, // Only non-expired invitations
+              },
+            });
+
+            for (const invitation of pendingInvitations) {
+              // Check if user is already a member
+              const existingMember = await db.projectMember.findUnique({
+                where: {
+                  projectId_userId: {
+                    projectId: invitation.projectId,
+                    userId: user.id,
+                  },
+                },
+              });
+
+              if (!existingMember) {
+                // Create project membership
+                await db.projectMember.create({
+                  data: {
+                    projectId: invitation.projectId,
+                    userId: user.id,
+                    role: invitation.role,
+                  },
+                });
+
+                // Log activity
+                await db.activity.create({
+                  data: {
+                    userId: user.id,
+                    projectId: invitation.projectId,
+                    type: "MEMBER_JOINED",
+                    description: `Joined project via invitation`,
+                    metadata: {
+                      role: invitation.role,
+                      invitedBy: invitation.invitedBy,
+                    },
+                  },
+                });
+
+                console.log(`[Auth] User ${user.email} joined project ${invitation.projectId} via invitation`);
+              }
+
+              // Delete the processed invitation
+              await db.projectInvitation.delete({
+                where: { id: invitation.id },
+              });
+            }
+
+            if (pendingInvitations.length > 0) {
+              console.log(`[Auth] Processed ${pendingInvitations.length} pending invitation(s) for ${user.email}`);
+            }
+          } catch (error) {
+            console.error("[Auth] Error processing invitations:", error);
+          }
+        }
       }
     },
 
