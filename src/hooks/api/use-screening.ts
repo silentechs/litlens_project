@@ -8,7 +8,7 @@ import {
   screeningApi,
   conflictsApi,
   type ScreeningQueueItem,
-  type ScreeningDecision,
+  type ScreeningDecisionInput,
   type Conflict,
   type PaginatedResponse,
 } from "@/lib/api-client";
@@ -106,7 +106,7 @@ export function useSubmitDecision(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (decision: ScreeningDecision) =>
+    mutationFn: (decision: ScreeningDecisionInput) =>
       screeningApi.submitDecision(projectId, decision),
     onSuccess: () => {
       // Invalidate queue and progress
@@ -117,14 +117,18 @@ export function useSubmitDecision(projectId: string) {
 }
 
 /**
- * Submit batch screening decisions
+ * Submit batch screening decisions (uses batch API with bulk_decision operation)
  */
 export function useBatchDecision(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (data: { projectWorkIds: string[]; phase: string; decision: string }) =>
-      screeningApi.batchDecision(projectId, data),
+      screeningApi.batch(projectId, {
+        operation: 'bulk_decision' as const,
+        projectWorkIds: data.projectWorkIds,
+        decision: data.decision as 'INCLUDE' | 'EXCLUDE' | 'MAYBE',
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: screeningKeys.queue(projectId) });
       queryClient.invalidateQueries({ queryKey: screeningKeys.progress(projectId) });
@@ -173,7 +177,7 @@ export function useResolveConflict(projectId: string) {
       data,
     }: {
       conflictId: string;
-      data: { finalDecision: string; reasoning: string };
+      data: { finalDecision: 'INCLUDE' | 'EXCLUDE' | 'MAYBE'; reasoning: string };
     }) => conflictsApi.resolve(projectId, conflictId, data),
     onSuccess: (_, { conflictId }) => {
       queryClient.invalidateQueries({ queryKey: screeningKeys.conflicts(projectId) });
@@ -185,21 +189,5 @@ export function useResolveConflict(projectId: string) {
   });
 }
 
-/**
- * Escalate a conflict
- */
-export function useEscalateConflict(projectId: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({ conflictId, reason }: { conflictId: string; reason: string }) =>
-      conflictsApi.escalate(projectId, conflictId, { reason }),
-    onSuccess: (_, { conflictId }) => {
-      queryClient.invalidateQueries({ queryKey: screeningKeys.conflicts(projectId) });
-      queryClient.invalidateQueries({
-        queryKey: screeningKeys.conflict(projectId, conflictId),
-      });
-    },
-  });
-}
-
+// NOTE: useEscalateConflict is disabled because conflictsApi.escalate is not implemented
+// export function useEscalateConflict(projectId: string) { ... }

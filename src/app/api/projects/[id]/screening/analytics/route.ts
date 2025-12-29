@@ -8,14 +8,9 @@ import {
   success,
 } from "@/lib/api";
 import {
-  getScreeningOverview,
-  getReviewerStats,
-  getScreeningTimeline,
-  getAIPerformance,
-  getPRISMAFlow,
-  getInterRaterReliability,
+  getScreeningAnalytics,
+  getPRISMAFlowData,
 } from "@/lib/services/screening-analytics";
-import { getConflictStats } from "@/lib/services/conflict-resolution";
 import { z } from "zod";
 
 interface RouteParams {
@@ -49,74 +44,17 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Determine which analytics to return
     const includeParam = searchParams.get("include");
+    const phase = searchParams.get("phase") as "TITLE_ABSTRACT" | "FULL_TEXT" | undefined;
     const include = includeParam 
       ? includeParam.split(",") 
-      : ["overview", "reviewers", "timeline", "ai", "conflicts", "irr"];
+      : ["kappa", "agreement", "conflicts", "performance", "velocity", "stats"];
 
-    const analytics: Record<string, unknown> = {};
-
-    // Fetch requested analytics in parallel
-    const promises: Promise<void>[] = [];
-
-    if (include.includes("overview")) {
-      promises.push(
-        getScreeningOverview(projectId).then((data) => {
-          analytics.overview = data;
-        })
-      );
-    }
-
-    if (include.includes("reviewers")) {
-      promises.push(
-        getReviewerStats(projectId).then((data) => {
-          analytics.reviewers = data;
-        })
-      );
-    }
-
-    if (include.includes("timeline")) {
-      const days = parseInt(searchParams.get("days") || "30", 10);
-      promises.push(
-        getScreeningTimeline(projectId, days).then((data) => {
-          analytics.timeline = data;
-        })
-      );
-    }
-
-    if (include.includes("ai")) {
-      promises.push(
-        getAIPerformance(projectId).then((data) => {
-          analytics.aiPerformance = data;
-        })
-      );
-    }
-
-    if (include.includes("conflicts")) {
-      promises.push(
-        getConflictStats(projectId).then((data) => {
-          analytics.conflicts = data;
-        })
-      );
-    }
-
-    if (include.includes("irr")) {
-      const phase = searchParams.get("phase") as "TITLE_ABSTRACT" | "FULL_TEXT" | null;
-      promises.push(
-        getInterRaterReliability(projectId, phase || "TITLE_ABSTRACT").then((data) => {
-          analytics.interRaterReliability = data;
-        })
-      );
-    }
-
-    if (include.includes("prisma")) {
-      promises.push(
-        getPRISMAFlow(projectId).then((data) => {
-          analytics.prismaFlow = data;
-        })
-      );
-    }
-
-    await Promise.all(promises);
+    // Use the comprehensive analytics service
+    const analytics = await getScreeningAnalytics({
+      projectId,
+      phase,
+      include,
+    });
 
     return success(analytics);
   } catch (error) {
@@ -158,54 +96,50 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { format } = bodySchema.parse(body);
 
     // Gather all analytics
-    const [overview, reviewers, timeline, aiPerformance, conflicts, prismaFlow] = await Promise.all([
-      getScreeningOverview(projectId),
-      getReviewerStats(projectId),
-      getScreeningTimeline(projectId, 90), // Last 90 days for export
-      getAIPerformance(projectId),
-      getConflictStats(projectId),
-      getPRISMAFlow(projectId),
-    ]);
+    const analytics = await getScreeningAnalytics({
+      projectId,
+      include: ["all"],
+    });
 
     const exportData = {
       exportedAt: new Date().toISOString(),
       projectId,
-      overview,
-      reviewers,
-      timeline,
-      aiPerformance,
-      conflicts,
-      prismaFlow,
+      ...analytics,
     };
 
     if (format === "csv") {
       // Convert to CSV format
       const csvRows: string[] = [];
       
-      // Add overview summary
-      csvRows.push("=== Screening Overview ===");
-      csvRows.push(`Total Studies,${overview.project.totalStudies}`);
-      csvRows.push(`Completed,${overview.overall.completedStudies}`);
-      csvRows.push(`Remaining,${overview.overall.remainingStudies}`);
-      csvRows.push(`Progress,${overview.overall.percentComplete.toFixed(1)}%`);
+      // Add Kappa score
+      csvRows.push("=== Inter-Rater Reliability ===");
+      if (analytics.kappa) {
+        csvRows.push(`Cohen's Kappa,${analytics.kappa.score || "N/A"}`);
+        csvRows.push(`Interpretation,${analytics.kappa.interpretation}`);
+        csvRows.push(`Studies Analyzed,${analytics.kappa.studiesAnalyzed}`);
+      }
       csvRows.push("");
       
-      // Add reviewer stats
-      csvRows.push("=== Reviewer Statistics ===");
-      csvRows.push("User,Decisions,Avg Time (ms),Agreement Rate,Include Rate,Exclude Rate");
-      reviewers.forEach((r) => {
-        csvRows.push(
-          `${r.userName || "Unknown"},${r.decisionsCount},${r.avgTimePerDecision?.toFixed(0) || "N/A"},${r.agreementRate?.toFixed(1) || "N/A"}%,${r.includedRate.toFixed(1)}%,${r.excludedRate.toFixed(1)}%`
-        );
-      });
-      csvRows.push("");
+      // Add reviewer performance
+      if (analytics.performance && analytics.performance.length > 0) {
+        csvRows.push("=== Reviewer Performance ===");
+        csvRows.push("Name,Studies Reviewed,Avg Time (s),Avg Confidence,Consensus Agreement");
+        analytics.performance.forEach((r: any) => {
+          csvRows.push(
+            `${r.name},${r.studiesReviewed},${r.avgTimePerStudy},${r.avgConfidence},${r.agreementWithConsensus || "N/A"}%`
+          );
+        });
+        csvRows.push("");
+      }
       
-      // Add timeline
-      csvRows.push("=== Daily Timeline ===");
-      csvRows.push("Date,Screened,Included,Excluded,Maybe,Cumulative");
-      timeline.forEach((t) => {
-        csvRows.push(`${t.date},${t.screened},${t.included},${t.excluded},${t.maybe},${t.cumulative}`);
-      });
+      // Add velocity
+      if (analytics.velocity && analytics.velocity.length > 0) {
+        csvRows.push("=== Screening Velocity ===");
+        csvRows.push("Date,Studies Screened,Avg Time per Study (s)");
+        analytics.velocity.forEach((v: any) => {
+          csvRows.push(`${v.date},${v.studiesScreened},${v.avgTimePerStudy}`);
+        });
+      }
 
       return new Response(csvRows.join("\n"), {
         headers: {

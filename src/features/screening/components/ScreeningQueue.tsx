@@ -7,6 +7,7 @@ import { useScreeningQueue, useSubmitDecision, useScreeningNextSteps as useScree
 import { useProject, useProjectStats } from "@/features/projects/api/queries";
 import { useAppStore } from "@/stores/app-store";
 import type { ScreeningDecision, ScreeningQueueItem, ScreeningPhase } from "@/types/screening";
+import { useMemo } from "react";
 import {
   Check,
   X,
@@ -35,6 +36,13 @@ import { ScreeningStats } from "./ScreeningStats";
 import { PhaseSelector } from "./PhaseSelector";
 import { LeadOperationsPanel } from "./LeadOperationsPanel";
 import { SwipeableCard } from "./SwipeableCard";
+import { DualScreeningStatus } from "./DualScreeningStatus";
+import { ScreeningFilters } from "./ScreeningFilters";
+import { EligibilityCriteriaPanel } from "./EligibilityCriteriaPanel";
+import { StudyTags } from "./StudyTags";
+import { ChatInterface } from "@/features/ai/components/ChatInterface";
+import { FullTextControls } from "./FullTextControls";
+// import { Message } from "ai";
 import {
   Table,
   TableBody,
@@ -72,6 +80,7 @@ export function ScreeningQueue() {
     getDecisionTime,
   } = useScreeningStore();
 
+  const [showChat, setShowChat] = useState(false);
   const [showExclusionInput, setShowExclusionInput] = useState(false);
   const [exclusionReason, setExclusionReason] = useState("");
   const [confidence, setConfidence] = useState(80);
@@ -82,6 +91,15 @@ export function ScreeningQueue() {
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showBatchPanel, setShowBatchPanel] = useState(false);
+
+  // Filtering and Sorting State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("aiConfidence");
+  const [filterDecision, setFilterDecision] = useState<string | undefined>(undefined);
+
+  // Eligibility Criteria Panel State
+  const [showCriteria, setShowCriteria] = useState(false);
+  const [criteria, setCriteria] = useState<any>(null);
 
   const isMobile = useIsMobile();
 
@@ -95,6 +113,9 @@ export function ScreeningQueue() {
   } = useScreeningQueue(currentProjectId || undefined, {
     phase: currentPhase,
     limit: 100,
+    search: searchTerm || undefined,
+    sortBy: sortBy,
+    status: filterDecision,
   });
 
   // Submit decision mutation
@@ -103,7 +124,22 @@ export function ScreeningQueue() {
   // Move hooks to top level
   const { data: nextSteps, isLoading: isLoadingNextSteps } = useScreeningQueueNextSteps(currentProjectId || undefined, currentPhase);
   const { data: project } = useProject(currentProjectId || undefined);
-  const { data: stats } = useProjectStats(currentProjectId || undefined);
+  const { data: projectStats } = useProjectStats(currentProjectId || undefined);
+  const enabledPhases = useMemo(() => {
+    // Conservative default: only enable phases we know exist in this project.
+    const titleAbstractTotal = projectStats?.phaseTotals?.titleAbstract ?? 0;
+    const fullTextTotal = projectStats?.phaseTotals?.fullText ?? 0;
+    const finalTotal = projectStats?.phaseTotals?.final ?? 0;
+
+    const phases: ScreeningPhase[] = ["TITLE_ABSTRACT"];
+    if (fullTextTotal > 0) phases.push("FULL_TEXT");
+    if (finalTotal > 0) phases.push("FINAL");
+
+    // Always allow the currently selected phase (prevents locking the user into an invalid UI state).
+    if (!phases.includes(currentPhase)) phases.push(currentPhase);
+
+    return phases;
+  }, [projectStats?.phaseTotals?.titleAbstract, projectStats?.phaseTotals?.fullText, projectStats?.phaseTotals?.final, currentPhase]);
 
   // Phase advancement mutation
   const advancePhase = useAdvancePhase(currentProjectId || "");
@@ -127,6 +163,22 @@ export function ScreeningQueue() {
       setCurrentIndex(0);
     }
   }, [studies.length, currentIndex, setCurrentIndex]);
+
+  // Fetch eligibility criteria
+  useEffect(() => {
+    if (currentProjectId) {
+      fetch(`/api/projects/${currentProjectId}/eligibility-criteria`, {
+        credentials: "include",
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.data?.exists) {
+            setCriteria(data.data.criteria);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [currentProjectId]);
 
   // Handle select all
   const toggleSelectAll = useCallback(() => {
@@ -209,6 +261,7 @@ export function ScreeningQueue() {
         'p': previous,
         'arrowleft': previous,
         'f': toggleFocusMode,
+        'c': () => setShowCriteria(!showCriteria),
       };
 
       if (actions[key]) {
@@ -269,6 +322,8 @@ export function ScreeningQueue() {
     return (
       <ScreeningStats
         currentPhase={currentPhase}
+        projectStats={projectStats}
+        enabledPhases={enabledPhases}
         stats={{
           completed: nextSteps?.completed || false,
           totalPending: nextSteps?.totalPending || 0,
@@ -316,21 +371,6 @@ export function ScreeningQueue() {
 
 
 
-  const enabledPhases = ["TITLE_ABSTRACT"] as ScreeningPhase[];
-
-  if (stats) {
-    if (stats.progress.screening.percentage === 100 || stats.progress.fullText.total > 0) {
-      enabledPhases.push("FULL_TEXT");
-    }
-
-    if (stats.progress.fullText.percentage === 100 || stats.progress.extraction.total > 0) {
-      enabledPhases.push("FINAL");
-    }
-  } else {
-    // Fallback if stats loading (or just default)
-    enabledPhases.push("FULL_TEXT", "FINAL");
-  }
-
   return (
     <div className={cn(
       "flex flex-col h-full transition-all duration-700 ease-in-out",
@@ -376,9 +416,19 @@ export function ScreeningQueue() {
             icon={isFocused ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             label={isFocused ? "Exit Focus" : "Focus Mode (F)"}
           />
+          {isFocused && criteria && (
+            <ToolbarButton
+              onClick={() => {
+                setShowCriteria(!showCriteria);
+                if (!showCriteria) setShowChat(false);
+              }}
+              icon={<Info className="w-5 h-5" />}
+              label={showCriteria ? "Hide Criteria (C)" : "Show Criteria (C)"}
+            />
+          )}
           <ToolbarButton
             onClick={() => setIsBatchMode(!isBatchMode)}
-            icon={isBatchMode ? <X className="w-5 h-5" /> : <Loader2 className="w-5 h-5 rotate-45" />} // Using rotated Loader as generic grid icon since Grid/Table not imported yet
+            icon={isBatchMode ? <X className="w-5 h-5" /> : <Loader2 className="w-5 h-5 rotate-45" />}
             label={isBatchMode ? "Exit Batch" : "Batch Mode"}
           />
           {!isFocused && !isBatchMode && (
@@ -390,10 +440,31 @@ export function ScreeningQueue() {
         </div>
       </header>
 
+      {/* Filtering and Sorting - Only show when not in focus mode or batch mode */}
+      {!isFocused && !isBatchMode && (
+        <ScreeningFilters
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
+          filterDecision={filterDecision}
+          onFilterDecisionChange={setFilterDecision}
+          onClearFilters={() => {
+            setSearchTerm("");
+            setSortBy("aiConfidence");
+            setFilterDecision(undefined);
+          }}
+        />
+      )}
+
       {/* Main Screening Area */}
       <div className={cn(
         "flex-1 grid gap-20",
-        isFocused ? "grid-cols-12 max-w-7xl mx-auto w-full" : "grid-cols-1"
+        isFocused
+          ? showCriteria
+            ? "grid-cols-12 max-w-7xl mx-auto w-full"
+            : "grid-cols-1 max-w-5xl mx-auto w-full"
+          : "grid-cols-1"
       )}>
         {/* Batch Mode View */}
         {isBatchMode ? (
@@ -483,7 +554,11 @@ export function ScreeningQueue() {
             {/* Study Content */}
             <div className={cn(
               "space-y-16 overflow-y-auto scroll-smooth pr-6 scrollbar-hide",
-              isFocused ? "col-span-8 pr-20" : "max-w-4xl"
+              isFocused
+                ? showCriteria
+                  ? "col-span-8 pr-20"
+                  : "col-span-full"
+                : "max-w-4xl"
             )}>
               <SwipeableCard onSwipe={handleSwipe} disabled={!isMobile}>
                 <AnimatePresence mode="wait">
@@ -496,6 +571,16 @@ export function ScreeningQueue() {
                     className="space-y-16"
                   >
                     <div className="space-y-8">
+                      {/* Dual Screening Status */}
+                      {currentStudy.reviewerStatus && (
+                        <DualScreeningStatus
+                          reviewerStatus={currentStudy.reviewerStatus}
+                          votedReviewers={currentStudy.votedReviewers}
+                          totalReviewersNeeded={currentStudy.totalReviewersNeeded}
+                          reviewersVoted={currentStudy.reviewersVoted}
+                        />
+                      )}
+
                       <h2 className="text-3xl md:text-5xl lg:text-7xl font-serif leading-[1.05] tracking-tight text-ink decoration-intel-blue/20 underline-offset-8">
                         <KeywordHighlighter
                           text={currentStudy.title}
@@ -525,6 +610,16 @@ export function ScreeningQueue() {
                       <div className="flex items-center gap-4">
                         <h3 className="font-mono text-[10px] uppercase tracking-[0.4em] text-muted font-black">Abstract Synthesis</h3>
                         <div className="flex-1 h-px bg-border/30" />
+                        <button
+                          onClick={() => {
+                            setShowChat(true);
+                            setShowCriteria(false);
+                          }}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-intel-blue/5 hover:bg-intel-blue/10 border border-intel-blue/20 rounded-full transition-colors text-intel-blue group"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Ask AI</span>
+                        </button>
                       </div>
                       <p className="text-lg md:text-2xl lg:text-3xl font-serif leading-[1.55] italic text-ink/90 first-letter:text-5xl md:first-letter:text-8xl first-letter:font-bold first-letter:mr-3 first-letter:float-left first-letter:text-ink first-letter:leading-none select-text">
                         <KeywordHighlighter
@@ -548,11 +643,68 @@ export function ScreeningQueue() {
                           label={`DOI: ${currentStudy.doi}`}
                         />
                       )}
+
+                      <FullTextControls
+                        projectId={currentProjectId!}
+                        projectWorkId={currentStudy.id}
+                        workUrl={currentStudy.url}
+                        pdfR2Key={currentStudy.pdfR2Key}
+                        ingestionStatus={currentStudy.ingestionStatus}
+                        ingestionError={currentStudy.ingestionError}
+                        chunksCreated={currentStudy.chunksCreated}
+                        onChanged={refetch}
+                      />
+                    </div>
+
+                    {/* Study Tags */}
+                    <div className="pt-8 border-t border-border/30">
+                      <StudyTags
+                        projectId={currentProjectId!}
+                        projectWorkId={currentStudy.id}
+                        tags={currentStudy.tags || []}
+                        onUpdate={refetch}
+                        editable={true}
+                      />
                     </div>
                   </motion.article>
                 </AnimatePresence>
               </SwipeableCard>
             </div>
+
+            {/* Right Sidebar (Focus Mode) */}
+            {isFocused && (showCriteria || showChat) && (
+              <div className="col-span-4 border-l border-border/50 pl-8 overflow-y-auto h-[calc(100vh-10rem)] sticky top-24">
+                {showChat ? (
+                  <div className="h-full flex flex-col bg-white/50 rounded-sm">
+                    <div className="flex justify-between items-center mb-6 pt-1">
+                      <div className="flex items-center gap-2 text-intel-blue">
+                        <Sparkles className="w-4 h-4" />
+                        <h3 className="font-mono text-[10px] uppercase tracking-[0.25em] font-black">AI Assistant</h3>
+                      </div>
+                      <button onClick={() => setShowChat(false)} className="hover:bg-slate-100 p-1 rounded-sm text-muted hover:text-ink transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <ChatInterface
+                      projectId={currentProjectId!}
+                      initialMessages={[
+                        {
+                          id: 'context',
+                          role: 'system',
+                          content: `You are an expert research assistant helping to screen this study for a systematic review.\n\nStudy Context:\nTitle: ${currentStudy.title}\nAuthors: ${currentStudy.authors.map(a => a.name).join(", ")}\nAbstract: ${currentStudy.abstract}\n\nAnswer questions about this specific study based on the provided title and abstract. If the question requires external knowledge, you may use it, but prioritize the study context.`
+                        } as any
+                      ]}
+                      className="flex-1 min-h-0"
+                    />
+                  </div>
+                ) : (
+                  <EligibilityCriteriaPanel
+                    criteria={criteria}
+                    collapsible={false}
+                  />
+                )}
+              </div>
+            )}
 
             {/* Action Panel (Focused Mode Sidebar) */}
             {!isBatchMode && (

@@ -120,7 +120,58 @@ export function ExtractionForm({ projectId, workId, template, onBack }: Extracti
                             />
                         )}
 
-                        {/* Add other field types as needed */}
+                        {field.type === 'date' && (
+                            <input
+                                type="date"
+                                {...register(field.id, { required: field.required })}
+                                className={cn(
+                                    "w-full bg-paper/30 border p-4 font-mono text-lg outline-none transition-all rounded-sm",
+                                    errors[field.id] ? "border-rose-400 focus:border-rose-600" : "border-border focus:border-ink"
+                                )}
+                            />
+                        )}
+
+                        {field.type === 'boolean' && (
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer border p-3 rounded-sm hover:bg-paper/50 flex-1">
+                                    <input
+                                        type="radio"
+                                        value="true"
+                                        {...register(field.id, { required: field.required })}
+                                        className="w-4 h-4 accent-ink"
+                                    />
+                                    <span className="font-serif italic">Yes / True</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer border p-3 rounded-sm hover:bg-paper/50 flex-1">
+                                    <input
+                                        type="radio"
+                                        value="false"
+                                        {...register(field.id, { required: field.required })}
+                                        className="w-4 h-4 accent-ink"
+                                    />
+                                    <span className="font-serif italic">No / False</span>
+                                </label>
+                            </div>
+                        )}
+
+                        {field.type === 'choice' && (
+                            <div className="space-y-2">
+                                {field.options?.map((option, idx) => (
+                                    <label key={idx} className="flex items-center gap-3 p-3 border border-border rounded-sm hover:bg-paper cursor-pointer group">
+                                        <input
+                                            type="radio"
+                                            value={option}
+                                            {...register(field.id, { required: field.required })}
+                                            className="w-4 h-4 accent-ink"
+                                        />
+                                        <span className="font-serif italic text-lg group-hover:text-ink transition-colors">{option}</span>
+                                    </label>
+                                ))}
+                                {!field.options?.length && (
+                                    <p className="text-xs text-rose-500 font-mono">No options defined for this choice field.</p>
+                                )}
+                            </div>
+                        )}
 
                         {field.description && (
                             <p className="text-xs text-muted/60 italic">{field.description}</p>

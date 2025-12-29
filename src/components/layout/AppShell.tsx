@@ -16,7 +16,7 @@ import {
   Users,
   Database,
   LineChart,
-
+  Target,
   FileText,
   Bell,
   LogOut,
@@ -33,7 +33,9 @@ import {
   Shield,
   Workflow,
   CheckCircle,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Network,
+  Bot
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useSession, signOut } from "next-auth/react";
@@ -159,6 +161,14 @@ function OpsNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () => 
         onClick={onItemClick}
       />
       <NavItem
+        icon={<ClipboardList className="w-5 h-5" />}
+        label="Criteria"
+        isOpen={isOpen}
+        active={pathname.includes('/criteria')}
+        href={`${projectBaseUrl}/criteria`}
+        onClick={onItemClick}
+      />
+      <NavItem
         icon={<Layers className="w-5 h-5" />}
         label="Extraction"
         isOpen={isOpen}
@@ -175,10 +185,59 @@ function OpsNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () => 
         onClick={onItemClick}
       />
 
+      <NavSection label="Quality Assurance" isOpen={isOpen} />
+
+      <NavItem
+        icon={<Target className="w-5 h-5" />}
+        label="Calibration"
+        isOpen={isOpen}
+        active={pathname.includes('/calibration')}
+        href={`${projectBaseUrl}/calibration`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<LineChart className="w-5 h-5" />}
+        label="Analytics"
+        isOpen={isOpen}
+        active={pathname.includes('/analytics')}
+        href={`${projectBaseUrl}/analytics`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<Users className="w-5 h-5" />}
+        label="Performance"
+        isOpen={isOpen}
+        active={pathname.includes('/performance')}
+        href={`${projectBaseUrl}/performance`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<FileText className="w-5 h-5" />}
+        label="PRISMA Flow"
+        isOpen={isOpen}
+        href={`${projectBaseUrl}/prisma`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<Network className="w-5 h-5" />}
+        label="Graph View"
+        isOpen={isOpen}
+        active={pathname.includes('/graph') && !pathname.includes('/graphs')}
+        href={`${projectBaseUrl}/graph`}
+        onClick={onItemClick}
+      />
+      <NavItem
+        icon={<Bot className="w-5 h-5" />}
+        label="Ask AI"
+        isOpen={isOpen}
+        active={pathname.includes('/chat')}
+        href={`${projectBaseUrl}/chat`}
+        onClick={onItemClick}
+      />
+
       <NavSection label="Management" isOpen={isOpen} />
 
       <NavItem icon={<Users className="w-5 h-5" />} label="Team" isOpen={isOpen} active={pathname.includes('/team')} href={`${projectBaseUrl}/team`} onClick={onItemClick} />
-      <NavItem icon={<LineChart className="w-5 h-5" />} label="Analytics" isOpen={isOpen} active={pathname.includes('/analytics')} href={`${projectBaseUrl}/analytics`} onClick={onItemClick} />
       <NavItem icon={<SettingsIcon className="w-5 h-5" />} label="Settings" isOpen={isOpen} active={pathname.includes('/settings')} href={`${projectBaseUrl}/settings`} onClick={onItemClick} />
     </>
   );
@@ -261,7 +320,7 @@ function AvatarMenu() {
 
           <DropdownMenu.Item
             className="group flex items-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-sm outline-none cursor-pointer transition-colors"
-            onClick={() => signOut({ callbackUrl: "/login" })}
+            onClick={() => signOut({ callbackUrl: `${window.location.origin}/login` })}
           >
             <LogOut className="w-4 h-4 mr-3 opacity-60 group-hover:opacity-100" />
             <span className="font-serif italic">Sign Out</span>

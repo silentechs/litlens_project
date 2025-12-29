@@ -67,11 +67,17 @@ export interface ProjectStats {
   extractionCompleted: number;
   qualityAssessed: number;
   progress: ProjectProgress;
+  phaseTotals?: {
+    titleAbstract: number;
+    fullText: number;
+    final: number;
+  };
 }
 
 export interface ProjectProgress {
   screening: PhaseProgress;
   fullText: PhaseProgress;
+  final: PhaseProgress;
   extraction: PhaseProgress;
   quality: PhaseProgress;
 }

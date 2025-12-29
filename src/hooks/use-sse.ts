@@ -28,7 +28,15 @@ type SSEEventType =
   | "project:update"
   | "notification:new"
   | "export:progress"
-  | "export:completed";
+  | "export:completed"
+  | "chat:message"
+  | "presence:join"
+  | "presence:leave"
+  | "presence:typing"
+  | "screening:update"
+  | "extraction:update"
+  | "chat:reaction"
+  | "chat:read";
 
 interface ImportProgressData {
   batchId: string;
@@ -51,6 +59,16 @@ interface NotificationData {
   type: string;
   title: string;
   message: string;
+}
+
+interface ChatMessageData {
+  id: string;
+  userId: string;
+  userName: string;
+  content: string;
+  replyToId?: string;
+  replyToContent?: string;
+  projectId: string;
 }
 
 // ============== CONNECTION STATE ==============
@@ -147,6 +165,50 @@ export function useSSE(projectId?: string) {
           queryClient.invalidateQueries({ queryKey: ["notifications"] });
           break;
         }
+
+        case "chat:message": {
+          const data = message.data as ChatMessageData;
+          // Invalidate chat messages query to refetch and show new message
+          queryClient.invalidateQueries({ 
+            queryKey: ["chat-messages", data.projectId] 
+          });
+          break;
+        }
+
+        case "chat:reaction": {
+          const data = message.data as { projectId: string; messageId: string };
+          // Invalidate reactions for the message
+          queryClient.invalidateQueries({ 
+            queryKey: ["chat-reactions", data.messageId] 
+          });
+          break;
+        }
+
+        case "chat:read": {
+          const data = message.data as { projectId: string; messageId: string };
+          // Invalidate read receipts for the message
+          queryClient.invalidateQueries({ 
+            queryKey: ["chat-read-receipts", data.messageId] 
+          });
+          break;
+        }
+
+        case "presence:join":
+        case "presence:leave":
+        case "presence:typing":
+          // Handled by usePresence hook directly
+          break;
+
+        case "screening:update":
+        case "extraction:update":
+          // Invalidate relevant queries
+          if ((message.data as { projectId?: string })?.projectId) {
+            const data = message.data as { projectId: string };
+            queryClient.invalidateQueries({ 
+              queryKey: projectKeys.stats(data.projectId) 
+            });
+          }
+          break;
       }
     } catch (error) {
       console.error('Failed to parse SSE message:', error);

@@ -222,3 +222,35 @@ export function publishExtractionUpdate(
     timestamp: Date.now(),
   });
 }
+
+export function publishChatReaction(
+  projectId: string,
+  data: {
+    messageId: string;
+    userId: string;
+    userName: string;
+    emoji: string;
+    action: "add" | "remove";
+  }
+) {
+  publish(`project:${projectId}`, {
+    type: "chat:reaction",
+    data: { projectId, ...data },
+    timestamp: Date.now(),
+  });
+}
+
+export function publishChatReadReceipt(
+  projectId: string,
+  data: {
+    messageId: string;
+    userId: string;
+    userName: string;
+  }
+) {
+  publish(`project:${projectId}`, {
+    type: "chat:read",
+    data: { projectId, ...data },
+    timestamp: Date.now(),
+  });
+}

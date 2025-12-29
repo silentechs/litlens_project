@@ -13,6 +13,12 @@ import {
 import { submitDecisionSchema, batchDecisionSchema } from "@/lib/validators";
 import { publishScreeningConflict } from "@/lib/events/publisher";
 
+// Clean Architecture - Use Service Layer
+import { ScreeningService } from "@/infrastructure/screening/screening-service";
+import { PrismaScreeningRepository } from "@/infrastructure/screening/prisma-screening-repository";
+import { ScreeningEventPublisherAdapter } from "@/infrastructure/screening/event-publisher-adapter";
+import { BullMQIngestionQueue } from "@/infrastructure/jobs/ingestion-queue";
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -72,72 +78,43 @@ async function handleSingleDecision(
       id: data.projectWorkId,
       projectId,
     },
-    include: {
-      project: {
-        select: {
-          blindScreening: true,
-          requireDualScreening: true,
-        },
-      },
-    },
   });
 
   if (!projectWork) {
     throw new NotFoundError("Study");
   }
 
-  // Check if user already made a decision for this phase
-  const existingDecision = await db.screeningDecisionRecord.findUnique({
-    where: {
-      projectWorkId_reviewerId_phase: {
-        projectWorkId: data.projectWorkId,
-        reviewerId: userId,
-        phase: data.phase,
-      },
-    },
+  // ✅ CLEAN ARCHITECTURE: Use Service Layer
+  const screeningService = new ScreeningService({
+    repository: new PrismaScreeningRepository(),
+    eventPublisher: new ScreeningEventPublisherAdapter(),
+    ingestionQueue: new BullMQIngestionQueue(),
   });
 
-  if (existingDecision) {
-    throw new ConflictError("You have already screened this study for this phase");
-  }
-
-  // Create the decision
-  const decision = await db.screeningDecisionRecord.create({
-    data: {
-      projectWorkId: data.projectWorkId,
-      reviewerId: userId,
-      phase: data.phase,
-      decision: data.decision,
-      reasoning: data.reasoning,
-      exclusionReason: data.exclusionReason,
-      timeSpentMs: data.timeSpentMs,
-      followedAi: data.followedAi,
-    },
+  // Process decision through service (handles all business logic)
+  const result = await screeningService.processDecision({
+    projectWorkId: data.projectWorkId,
+    reviewerId: userId,
+    phase: data.phase,
+    decision: data.decision,
+    reasoning: data.reasoning,
+    exclusionReason: data.exclusionReason,
+    timeSpentMs: data.timeSpentMs,
+    confidence: data.confidence,
+    followedAi: data.followedAi,
   });
 
-  // Check for conflicts and update projectWork status
-  await updateProjectWorkStatus(
-    data.projectWorkId,
-    data.phase,
-    projectWork.project.requireDualScreening
-  );
-
-  // Log activity
-  await db.activity.create({
-    data: {
-      userId,
-      projectId,
-      type: "SCREENING_DECISION",
-      description: `Made ${data.decision} decision`,
-      metadata: {
-        projectWorkId: data.projectWorkId,
-        phase: data.phase,
-        decision: data.decision,
-      },
+  // Return success with state transition result
+  return created({
+    message: 'Decision recorded successfully',
+    result: {
+      status: result.newStatus,
+      phase: result.newPhase,
+      finalDecision: result.finalDecision,
+      conflictCreated: result.conflictCreated,
+      shouldAdvancePhase: result.shouldAdvancePhase,
     },
   });
-
-  return created(decision);
 }
 
 async function handleBatchDecision(
@@ -237,98 +214,5 @@ async function handleBatchDecision(
 }
 
 // ============== HELPERS ==============
-
-async function updateProjectWorkStatus(
-  projectWorkId: string,
-  phase: string,
-  requireDualScreening: boolean
-) {
-  // Get all decisions for this work and phase
-  const decisions = await db.screeningDecisionRecord.findMany({
-    where: {
-      projectWorkId,
-      phase: phase as "TITLE_ABSTRACT" | "FULL_TEXT" | "FINAL",
-    },
-  });
-
-  if (decisions.length === 0) {
-    return;
-  }
-
-  // If dual screening is required but only one decision exists, mark as screening (waiting for 2nd reviewer)
-  if (decisions.length === 1 && requireDualScreening) {
-    await db.projectWork.update({
-      where: { id: projectWorkId },
-      data: { status: "SCREENING" },
-    });
-    return;
-  }
-
-  // If dual screening is NOT required and we have 1 decision, finalize immediately
-  if (decisions.length === 1 && !requireDualScreening) {
-    const finalDecision = decisions[0].decision;
-    await db.projectWork.update({
-      where: { id: projectWorkId },
-      data: {
-        status: finalDecision === "INCLUDE"
-          ? "INCLUDED"
-          : finalDecision === "EXCLUDE"
-            ? "EXCLUDED"
-            : "MAYBE",
-        finalDecision,
-      },
-    });
-    return;
-  }
-
-  // Check for conflict (different decisions from 2+ reviewers)
-  const uniqueDecisions = new Set(decisions.map((d) => d.decision));
-
-  if (uniqueDecisions.size > 1) {
-    // Create conflict
-    const projectWork = await db.projectWork.findUnique({
-      where: { id: projectWorkId },
-      select: { projectId: true },
-    });
-
-    if (projectWork) {
-      const conflict = await db.conflict.create({
-        data: {
-          projectId: projectWork.projectId,
-          projectWorkId,
-          phase: phase as "TITLE_ABSTRACT" | "FULL_TEXT" | "FINAL",
-          status: "PENDING",
-          decisions: decisions.map((d) => ({
-            reviewerId: d.reviewerId,
-            decision: d.decision,
-            reasoning: d.reasoning,
-          })),
-        },
-      });
-
-      await db.projectWork.update({
-        where: { id: projectWorkId },
-        data: { status: "CONFLICT" },
-      });
-
-      // Realtime hint for all connected reviewers/leads on this project.
-      publishScreeningConflict(projectWork.projectId, conflict.id, projectWorkId);
-    }
-    return;
-  }
-
-  // All decisions agree - update status
-  const finalDecision = decisions[0].decision;
-  await db.projectWork.update({
-    where: { id: projectWorkId },
-    data: {
-      status: finalDecision === "INCLUDE"
-        ? "INCLUDED"
-        : finalDecision === "EXCLUDE"
-          ? "EXCLUDED"
-          : "MAYBE",
-      finalDecision,
-    },
-  });
-}
+// (Old updateProjectWorkStatus removed - now handled by ScreeningService)
 

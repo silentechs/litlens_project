@@ -46,7 +46,12 @@ model User {
   extractionData        ExtractionData[]
   qualityAssessments    QualityAssessment[]
   chatMessages          ChatMessage[]
+  chatReactions         ChatReaction[]
+  chatReadReceipts      ChatReadReceipt[]
   sentInvitations       ProjectInvitation[]
+  studyNotes            StudyNote[]
+  screeningDecisionRecords ScreeningDecisionRecord[]
+  calibrationDecisions     CalibrationDecision[]
 
   @@index([email])
 }
@@ -252,6 +257,8 @@ model Project {
   calibrationRounds CalibrationRound[]
   chatMessages    ChatMessage[]
   invitations     ProjectInvitation[]
+  eligibilityCriteria EligibilityCriteria?
+  studyTags       StudyTag[]
 
   @@index([organizationId])
   @@index([status])
@@ -353,6 +360,7 @@ model Work {
   libraryItems      LibraryItem[]
   graphNodes        GraphNode[]
   writingSources    WritingSource[]
+  documentChunks    DocumentChunk[]
 
   @@index([doi])
   @@index([pmid])
@@ -388,6 +396,18 @@ model ProjectWork {
   isDuplicate   Boolean  @default(false)
   duplicateOfId String?
   
+  // ✅ NEW: Full-text PDF storage (for RAG)
+  pdfR2Key         String?   // R2 object key (e.g., "projects/xxx/pdfs/yyy.pdf")
+  pdfUploadedAt    DateTime? // When PDF was uploaded/fetched
+  pdfFileSize      Int?      // File size in bytes
+  pdfSource        String?   // "url_fetch", "manual_upload", "api"
+  
+  // ✅ NEW: RAG ingestion tracking
+  ingestionStatus  String?   @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED, SKIPPED
+  ingestionError   String?   @db.Text           // Error message if failed
+  chunksCreated    Int?                         // Number of chunks created
+  lastIngestedAt   DateTime?                    // Last successful ingestion
+  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   
@@ -401,6 +421,8 @@ model ProjectWork {
   extractionData     ExtractionData[]
   qualityAssessments QualityAssessment[]
   conflicts          Conflict[]
+  tags               StudyTag[]
+  notes              StudyNote[]
 
   @@unique([projectId, workId])
   @@index([projectId, status])
@@ -495,6 +517,7 @@ model ScreeningDecisionRecord {
   updatedAt     DateTime @updatedAt
   
   projectWork   ProjectWork @relation(fields: [projectWorkId], references: [id], onDelete: Cascade)
+  reviewer      User        @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
 
   @@unique([projectWorkId, reviewerId, phase])
   @@index([projectWorkId])
@@ -524,6 +547,7 @@ model Conflict {
   projectWork   ProjectWork @relation(fields: [projectWorkId], references: [id], onDelete: Cascade)
   resolution    ConflictResolution?
 
+  @@unique([projectWorkId, phase]) // ✅ Prevent duplicate conflicts
   @@index([projectId, status])
   @@index([projectWorkId])
 }
@@ -546,6 +570,72 @@ model ConflictResolution {
   
   conflict      Conflict @relation(fields: [conflictId], references: [id], onDelete: Cascade)
   resolver      User     @relation(fields: [resolverId], references: [id])
+}
+
+// ============== ELIGIBILITY CRITERIA ==============
+
+model EligibilityCriteria {
+  id          String   @id @default(cuid())
+  projectId   String   @unique
+  
+  // PICOS Framework
+  population     String?  @db.Text
+  intervention   String?  @db.Text
+  comparison     String?  @db.Text
+  outcomes       String?  @db.Text
+  studyDesigns   String[] @default([])
+  
+  // Additional criteria
+  includePreprints    Boolean @default(false)
+  languageRestriction String[] @default([])
+  yearMin             Int?
+  yearMax             Int?
+  
+  // Other filters
+  customCriteria Json?  @db.JsonB
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@index([projectId])
+}
+
+// ============== STUDY TAGS & NOTES ==============
+
+model StudyTag {
+  id            String   @id @default(cuid())
+  projectWorkId String
+  projectId     String
+  name          String
+  color         String   @default("#3B82F6")
+  createdBy     String
+  createdAt     DateTime @default(now())
+  
+  projectWork ProjectWork @relation(fields: [projectWorkId], references: [id], onDelete: Cascade)
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@unique([projectWorkId, name])
+  @@index([projectId])
+  @@index([projectWorkId])
+}
+
+model StudyNote {
+  id            String   @id @default(cuid())
+  projectWorkId String
+  userId        String
+  content       String   @db.Text
+  phase         ScreeningPhase?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  projectWork ProjectWork @relation(fields: [projectWorkId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([projectWorkId])
+  @@index([userId])
 }
 
 // ============== CALIBRATION ==============
@@ -585,6 +675,7 @@ model CalibrationDecision {
   createdAt     DateTime @default(now())
   
   round         CalibrationRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  reviewer      User             @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
 
   @@index([roundId])
 }
@@ -1293,6 +1384,10 @@ model ChatMessage {
   content     String   @db.Text
   replyToId   String?
   
+  // Editing & Deletion
+  isDeleted   Boolean  @default(false)
+  editedAt    DateTime?
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
@@ -1300,8 +1395,61 @@ model ChatMessage {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   replyTo     ChatMessage? @relation("ChatReplies", fields: [replyToId], references: [id])
   replies     ChatMessage[] @relation("ChatReplies")
+  
+  // Enhanced features
+  attachments ChatAttachment[]
+  reactions   ChatReaction[]
+  readReceipts ChatReadReceipt[]
 
   @@index([projectId, createdAt])
+  @@index([userId])
+}
+
+model ChatAttachment {
+  id          String   @id @default(cuid())
+  messageId   String
+  
+  fileName    String
+  fileSize    Int
+  mimeType    String
+  url         String
+  
+  createdAt   DateTime @default(now())
+  
+  message     ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+}
+
+model ChatReaction {
+  id          String   @id @default(cuid())
+  messageId   String
+  userId      String
+  
+  emoji       String   // e.g., "👍", "❤️", "😂"
+  
+  createdAt   DateTime @default(now())
+  
+  message     ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+}
+
+model ChatReadReceipt {
+  id          String   @id @default(cuid())
+  messageId   String
+  userId      String
+  
+  readAt      DateTime @default(now())
+  
+  message     ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
   @@index([userId])
 }
 
@@ -1335,4 +1483,23 @@ enum JobStatus {
   COMPLETED
   FAILED
   CANCELLED
+}
+
+// ============== RAG & VECTOR SEARCH ==============
+
+model DocumentChunk {
+  id          String   @id @default(cuid())
+  workId      String
+  
+  content     String   @db.Text
+  metadata    Json     // { page, section, bbox, ... }
+  
+  // pgvector embedding (OpenAI ada-002 = 1536 dimensions)
+  embedding   Unsupported("vector(1536)")?
+
+  createdAt   DateTime @default(now())
+  
+  work        Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  
+  @@index([workId])
 }

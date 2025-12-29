@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useParams } from "next/navigation";
 import { useAppStore } from "@/stores/app-store";
+import { ProjectCollaborationWrapper } from "@/features/collaboration/components/ProjectCollaborationWrapper";
 
 export default function ProjectLayout({
   children,
@@ -33,6 +34,10 @@ export default function ProjectLayout({
     );
   }
 
-  return <>{children}</>;
+  return (
+    <ProjectCollaborationWrapper projectId={projectId}>
+      {children}
+    </ProjectCollaborationWrapper>
+  );
 }
 

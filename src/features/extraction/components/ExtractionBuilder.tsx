@@ -203,6 +203,47 @@ export function ExtractionBuilder({ projectId, onBack }: ExtractionBuilderProps)
                         className="w-full bg-paper/30 border border-border/50 focus:border-ink p-4 text-sm font-serif italic outline-none transition-all rounded-sm resize-none"
                         rows={2}
                       />
+
+                      {/* Options Editor for Choice Fields */}
+                      {field.type === 'choice' && (
+                        <div className="space-y-3 bg-paper/30 p-4 border border-border/50 rounded-sm">
+                          <label className="text-[10px] font-mono uppercase tracking-widest text-muted">Response Options</label>
+                          <div className="space-y-2">
+                            {(field.options || []).map((option, idx) => (
+                              <div key={idx} className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={option}
+                                  onChange={(e) => {
+                                    const newOptions = [...(field.options || [])];
+                                    newOptions[idx] = e.target.value;
+                                    setFields(fields.map(f => f.id === field.id ? { ...f, options: newOptions } : f));
+                                  }}
+                                  className="flex-1 text-sm font-mono border border-border px-3 py-1.5 rounded-sm outline-none focus:border-ink"
+                                />
+                                <button
+                                  onClick={() => {
+                                    const newOptions = (field.options || []).filter((_, i) => i !== idx);
+                                    setFields(fields.map(f => f.id === field.id ? { ...f, options: newOptions } : f));
+                                  }}
+                                  className="p-1.5 hover:bg-rose-100 text-rose-500 rounded-sm"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              onClick={() => {
+                                const newOptions = [...(field.options || []), `Option ${(field.options?.length || 0) + 1}`];
+                                setFields(fields.map(f => f.id === field.id ? { ...f, options: newOptions } : f));
+                              }}
+                              className="text-[10px] font-mono uppercase tracking-widest text-intel-blue hover:underline flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Add Option
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-8 shrink-0 pt-2">

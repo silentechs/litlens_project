@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
@@ -103,18 +103,28 @@ function transformToCytoscape(graphData: GraphData): cytoscape.ElementDefinition
   return elements;
 }
 
-export function CitationGraph() {
+interface CitationGraphProps {
+  projectId?: string;
+}
+
+export function CitationGraph({ projectId }: CitationGraphProps) {
   const queryClient = useQueryClient();
   const [elements, setElements] = useState<cytoscape.ElementDefinition[]>([]);
   const [selectedNodeData, setSelectedNodeData] = useState<Record<string, unknown> | null>(null);
   const [showProjectSelect, setShowProjectSelect] = useState(false);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(projectId || null);
   const [graphType, setGraphType] = useState<"TOPIC_CLUSTER" | "CO_AUTHORSHIP">("TOPIC_CLUSTER");
   const [nodeSearch, setNodeSearch] = useState("");
   const [currentGraphData, setCurrentGraphData] = useState<GraphData | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+
+  useEffect(() => {
+    if (projectId) {
+      setSelectedProjectId(projectId);
+    }
+  }, [projectId]);
 
   // Fetch user's projects
   const { data: projectsData, isLoading: isLoadingProjects } = useQuery({
@@ -166,6 +176,15 @@ export function CitationGraph() {
       setShowProjectSelect(false);
     },
   });
+
+  // Auto-generate/fetch graph if projectId is provided
+  useEffect(() => {
+    if (projectId && !currentGraphData && !generateGraphMutation.isPending) {
+      generateGraphMutation.mutate({ projectId, type: graphType });
+    }
+    // Only run on mount or when projectId/type changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, graphType]);
 
   const cyRef = useRef<cytoscape.Core | null>(null);
 
@@ -322,89 +341,101 @@ export function CitationGraph() {
     {
       selector: 'node',
       style: {
-        'background-color': '#1a3320',
+        'background-color': '#fff',
         'label': 'data(label)',
-        'font-family': 'EB Garamond, serif',
-        'font-style': 'italic',
-        'font-size': '10px',
-        'color': '#1a3320',
-        'text-margin-y': 8,
+        'font-family': 'Inter, system-ui, sans-serif',
+        'font-weight': '500',
+        'font-size': '11px',
+        'color': '#0f172a', // slate-900
+        'text-margin-y': 6,
         'text-valign': 'bottom',
         'text-halign': 'center',
-        'width': (ele: cytoscape.NodeSingular) => ele.data('size') || 25,
-        'height': (ele: cytoscape.NodeSingular) => ele.data('size') || 25,
-        'border-width': 2,
-        'border-color': 'rgba(26, 51, 32, 0.1)',
-        'transition-property': 'border-color, border-width, background-color',
-        'transition-duration': '150ms',
+        'width': (ele: cytoscape.NodeSingular) => ele.data('size') || 30,
+        'height': (ele: cytoscape.NodeSingular) => ele.data('size') || 30,
+        'border-width': 1,
+        'border-color': '#94a3b8', // slate-400
+        'transition-property': 'border-color, border-width, background-color, width, height',
+        'transition-duration': '200ms',
+        'text-wrap': 'wrap',
+        'text-max-width': 100,
       }
     },
     {
       selector: 'node[type="work"]',
       style: {
-        'background-color': '#4a5568',
+        'background-color': '#eff6ff', // blue-50
+        'border-color': '#3b82f6', // blue-500
         'shape': 'ellipse',
       }
     },
     {
       selector: 'node[type="author"]',
       style: {
-        'background-color': '#2b6cb0',
-        'shape': 'diamond',
+        'background-color': '#f0fdf4', // green-50
+        'border-color': '#22c55e', // green-500
+        'shape': 'round-rectangle',
+        'width': 24,
+        'height': 24
       }
     },
     {
       selector: 'node[type="topic"]',
       style: {
-        'background-color': '#c53030',
-        'shape': 'round-rectangle',
+        'background-color': '#fefce8', // yellow-50
+        'border-color': '#eab308', // yellow-500
+        'shape': 'round-hexagon',
       }
     },
     {
       selector: 'node[type="journal"]',
       style: {
-        'background-color': '#2f855a',
-        'shape': 'hexagon',
+        'background-color': '#faf5ff', // purple-50
+        'border-color': '#a855f7', // purple-500
+        'shape': 'tag',
       }
     },
     {
       selector: 'node[type="core"]',
       style: {
-        'background-color': '#0a5c91',
+        'background-color': '#0f172a', // slate-900
+        'border-color': '#0f172a',
+        'color': '#fff',
       }
     },
     {
       selector: 'node:selected',
       style: {
-        'background-color': '#0a5c91',
-        'border-width': 4,
-        'border-color': 'rgba(10, 92, 145, 0.3)',
-        'border-opacity': 1
+        'border-width': 3,
+        'border-color': '#0f172a', // slate-900
+        'shadow-blur': 10,
+        'shadow-color': 'rgba(0,0,0,0.1)',
       }
     },
     {
       selector: 'node.highlighted',
       style: {
-        'background-color': '#d69e2e',
-        'border-width': 3,
-        'border-color': '#b7791f',
+        'background-color': '#3b82f6', // blue-500
+        'border-color': '#1d4ed8', // blue-700
+        'color': '#1d4ed8',
+        'font-weight': 'bold',
       }
     },
     {
       selector: 'node.dimmed',
       style: {
-        'opacity': 0.2,
+        'opacity': 0.3,
+        'color': '#cbd5e1', // slate-300
       }
     },
     {
       selector: 'edge',
       style: {
-        'width': 1,
+        'width': 1.5,
         'line-color': '#cbd5e0',
         'line-style': 'solid',
         'curve-style': 'bezier',
         'target-arrow-shape': 'none',
-        'opacity': 0.6
+        'opacity': 0.4
       }
     },
     {
@@ -433,31 +464,35 @@ export function CitationGraph() {
   };
 
   return (
-    <div className="space-y-8 h-full flex flex-col">
-      <header className="flex justify-between items-end">
-        <div className="space-y-4">
-          <h1 className="text-6xl font-serif">Research Graph</h1>
-          <p className="text-muted font-serif italic text-xl">Mapping the intellectual lineage of your field.</p>
+    <div className="space-y-6 h-full flex flex-col bg-slate-50/50">
+      <header className="flex justify-between items-center px-6 pt-6">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Network Analysis</h1>
+          <p className="text-sm text-slate-500">Visualize citations, co-authorship, and topic clusters.</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-3">
           {!isEmpty && (
             <>
-              <button
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => handleExport("png")}
-                className="px-4 py-2 border border-border text-[10px] font-mono uppercase tracking-widest hover:bg-paper transition-all flex items-center gap-2"
+                className="h-8 text-xs uppercase tracking-wider"
               >
-                <Download className="w-4 h-4" />
-                Export PNG
-              </button>
-              <button
+                <Download className="w-3.5 h-3.5 mr-2" />
+                Export
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => {
                   setElements([]);
                   setCurrentGraphData(null);
                 }}
-                className="px-4 py-2 border border-border text-[10px] font-mono uppercase tracking-widest hover:bg-paper transition-all"
+                className="h-8 text-xs uppercase tracking-wider"
               >
-                Clear Canvas
-              </button>
+                Clear
+              </Button>
             </>
           )}
           <button
@@ -472,341 +507,280 @@ export function CitationGraph() {
 
       <div className="accent-line" />
 
-      {/* Graph Visualizer Shell */}
-      <div className="flex-1 relative bg-white border border-border min-h-[600px] overflow-hidden group shadow-sm rounded-sm">
-        {isEmpty ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center space-y-8 bg-paper/20">
-            <div className="w-24 h-24 bg-white border border-border rounded-full flex items-center justify-center shadow-sm">
-              <Network className="w-10 h-10 text-muted opacity-20" />
-            </div>
-            <div className="space-y-3 max-w-md">
-              <h2 className="text-4xl font-serif italic">The canvas is waiting.</h2>
-              <p className="text-muted font-serif italic text-lg leading-relaxed">
-                Start your research journey by connecting existing project data or importing a fresh bibliography.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-6 w-full max-w-2xl">
-              <OnboardingCard
-                icon={<Database className="w-6 h-6" />}
-                title="Connect Project"
-                description="Generate a graph from your current systematic review studies."
-                onClick={() => setShowProjectSelect(true)}
-              />
-              <OnboardingCard
-                icon={<Upload className="w-6 h-6" />}
-                title="Import Bibliography"
-                description="Upload RIS or BibTeX files to map historical citations."
-                onClick={() => setShowImportDialog(true)}
-              />
-            </div>
-
-            {/* Import Bibliography Dialog */}
-            <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-              <DialogContent className="sm:max-w-lg bg-white/95 backdrop-blur-sm">
-                <DialogHeader>
-                  <DialogTitle className="font-serif text-3xl">Import Bibliography</DialogTitle>
-                  <p className="text-muted-foreground font-serif text-base mt-2">
-                    Visualize your citation network by uploading a bibliography file.
-                  </p>
-                </DialogHeader>
-
-                <div className="py-6">
-                  {!importFile ? (
-                    <div className="group relative">
-                      <div className="absolute inset-0 bg-gradient-to-b from-transparent to-paper/20 rounded-xl" />
-                      <label
-                        htmlFor="bibliography-upload"
-                        className="relative flex flex-col items-center justify-center w-full aspect-[2/1] border border-dashed border-border rounded-xl cursor-pointer hover:border-foreground/40 hover:bg-paper/30 transition-all duration-300"
-                      >
-                        <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
-                          <div className="p-4 bg-paper rounded-full mb-4 group-hover:scale-110 transition-transform duration-300 shadow-sm border border-border">
-                            <Upload className="w-6 h-6 text-foreground/70" />
-                          </div>
-                          <p className="mb-2 text-sm font-medium text-foreground">
-                            <span className="font-serif font-semibold border-b border-foreground/30 pb-0.5">Click to upload</span> <span className="text-muted-foreground font-serif italic">or drag and drop</span>
-                          </p>
-                          <p className="text-xs text-muted-foreground font-mono uppercase tracking-wider mt-2">
-                            RIS, BibTeX, or CSV
-                          </p>
-                        </div>
-                        <input
-                          id="bibliography-upload"
-                          type="file"
-                          className="hidden"
-                          accept=".ris,.bib,.bibtex,.csv"
-                          onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                        />
-                      </label>
-                    </div>
-                  ) : (
-                    <div className="relative flex items-center p-4 border border-border rounded-xl bg-paper/30 group animate-in fade-in zoom-in-95 duration-200">
-                      <div className="p-3 bg-white border border-border rounded-lg mr-4 shadow-sm">
-                        <FileText className="w-6 h-6 text-foreground/70" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate font-serif">
-                          {importFile.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                          {(importFile.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setImportFile(null)}
-                        className="p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive rounded-full transition-colors ml-2"
-                        aria-label="Remove file"
-                      >
-                        <XIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <DialogFooter className="sm:justify-between sm:items-center gap-4 border-t border-border pt-4">
-                  <p className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider hidden sm:block">
-                    Supported formats: .ris, .bib, .csv
-                  </p>
-                  <div className="flex gap-3">
-                    <Button variant="ghost" onClick={() => setShowImportDialog(false)} className="font-serif">
-                      Cancel
-                    </Button>
-                    <Button
-                      onClick={handleBibliographyImport}
-                      disabled={!importFile || isImporting}
-                      className="btn-editorial min-w-[140px]"
-                    >
-                      {isImporting ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Generate Graph
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+      {/* Onboarding State */}
+      {isEmpty ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-12 text-center space-y-8 bg-slate-50/50">
+          <div className="w-20 h-20 bg-white border border-slate-200 rounded-2xl flex items-center justify-center shadow-sm">
+            <Network className="w-8 h-8 text-slate-400" />
           </div>
-        ) : (
-          <>
-            {/* Cytoscape Canvas - MUST be first so overlays render on top */}
-            <div className="absolute inset-0 w-full h-full z-0" style={{ backgroundColor: '#faf9f7' }}>
-              {elements.length > 0 && (
-                <CytoscapeComponent
-                  elements={CytoscapeComponent.normalizeElements(elements)}
-                  style={{ width: '100%', height: '100%' }}
-                  stylesheet={stylesheet as any}
-                  cy={(cy: cytoscape.Core) => {
-                    cyRef.current = cy;
+          <div className="space-y-2 max-w-md">
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900">Start Mapping</h2>
+            <p className="text-slate-500 text-base leading-relaxed">
+              Visualize connections between papers, authors, and topics.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 w-full max-w-xl">
+            <OnboardingCard
+              icon={<Database className="w-5 h-5 text-blue-600" />}
+              title="Connect Project"
+              description="Map your current systematic review studies."
+              onClick={() => setShowProjectSelect(true)}
+            />
+            <OnboardingCard
+              icon={<Upload className="w-5 h-5 text-violet-600" />}
+              title="Import Bibliography"
+              description="Upload RIS/BibTeX files."
+              onClick={() => setShowImportDialog(true)}
+            />
+          </div>
 
-                    cy.on('tap', 'node', (evt: cytoscape.EventObject) => {
-                      const node = evt.target;
-                      setSelectedNodeData(node.data());
-                    });
+          {/* Import Bibliography Dialog */}
+          <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+            <DialogContent className="sm:max-w-lg bg-white">
+              <DialogHeader>
+                <DialogTitle className="text-xl font-semibold">Import Bibliography</DialogTitle>
+                <p className="text-slate-500 text-sm mt-1">
+                  Upload a file to visualize historical citations.
+                </p>
+              </DialogHeader>
 
-                    cy.on('tap', (evt: cytoscape.EventObject) => {
-                      if (evt.target === cy) {
-                        setSelectedNodeData(null);
-                      }
-                    });
-                  }}
-                  layout={layoutConfig as any}
-                  wheelSensitivity={0.3}
-                  minZoom={0.1}
-                  maxZoom={4}
-                />
-              )}
-            </div>
-
-            {/* Graph UI Overlay: Controls */}
-            <div className="absolute top-6 left-6 flex flex-col gap-4 z-10">
-              <div className="bg-white/90 backdrop-blur-md border border-border shadow-editorial p-2 flex flex-col gap-2 rounded-sm">
-                <GraphControl icon={<ZoomIn className="w-4 h-4" />} label="Zoom In" onClick={handleZoomIn} />
-                <GraphControl icon={<ZoomOut className="w-4 h-4" />} label="Zoom Out" onClick={handleZoomOut} />
-                <GraphControl icon={<Maximize className="w-4 h-4" />} label="Fit View" onClick={handleFitView} />
-              </div>
-              <div className="bg-white/90 backdrop-blur-md border border-border shadow-editorial p-2 flex flex-col gap-2 rounded-sm">
-                <GraphControl
-                  icon={<RefreshCw className="w-4 h-4" />}
-                  label="Regenerate"
-                  onClick={() => selectedProjectId && generateGraphMutation.mutate({ projectId: selectedProjectId, type: graphType })}
-                />
-                <GraphControl
-                  icon={<Download className="w-4 h-4" />}
-                  label="Export"
-                  onClick={() => handleExport("png")}
-                />
-              </div>
-            </div>
-
-            {/* Graph UI Overlay: Search & Legend */}
-            <div className="absolute top-6 right-6 flex flex-col gap-4 z-10 w-72">
-              <div className="bg-white/90 backdrop-blur-md border border-border shadow-editorial p-4 space-y-4 rounded-sm">
-                <div className="relative">
-                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted" />
-                  <input
-                    type="text"
-                    placeholder="Find node..."
-                    value={nodeSearch}
-                    onChange={(e) => handleNodeSearch(e.target.value)}
-                    className="w-full bg-paper border border-border pl-8 pr-2 py-1.5 text-[10px] font-mono uppercase tracking-tight outline-none focus:border-ink transition-colors"
-                  />
-                  {nodeSearch && (
-                    <button
-                      onClick={() => handleNodeSearch("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-ink"
+              <div className="py-6">
+                {!importFile ? (
+                  <div className="group relative">
+                    <label
+                      htmlFor="bibliography-upload"
+                      className="relative flex flex-col items-center justify-center w-full aspect-[2/1] border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-500 hover:bg-blue-50/50 transition-all duration-200"
                     >
-                      <XIcon className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <h4 className="font-mono text-[10px] uppercase tracking-widest text-muted">Legend</h4>
-                  <div className="space-y-1.5">
-                    {currentGraphData?.nodes.some((n) => n.type === "work") && (
-                      <GraphLegendItem color="bg-[#4a5568]" label="Papers" />
-                    )}
-                    {currentGraphData?.nodes.some((n) => n.type === "author") && (
-                      <GraphLegendItem color="bg-[#2b6cb0]" label="Authors" />
-                    )}
-                    {currentGraphData?.nodes.some((n) => n.type === "topic") && (
-                      <GraphLegendItem color="bg-[#c53030]" label="Topics" />
-                    )}
-                    {currentGraphData?.nodes.some((n) => n.type === "journal") && (
-                      <GraphLegendItem color="bg-[#2f855a]" label="Journals" />
-                    )}
-                    {!currentGraphData && graphType === "TOPIC_CLUSTER" && (
-                      <>
-                        <GraphLegendItem color="bg-[#c53030]" label="Topic Clusters" />
-                        <GraphLegendItem color="bg-[#4a5568]" label="Papers" />
-                      </>
-                    )}
-                    {!currentGraphData && graphType === "CO_AUTHORSHIP" && (
-                      <>
-                        <GraphLegendItem color="bg-[#2b6cb0]" label="Authors" />
-                        <GraphLegendItem color="bg-[#4a5568]" label="Papers" />
-                      </>
-                    )}
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                        <div className="p-3 bg-slate-100 rounded-full mb-3 group-hover:bg-blue-100 transition-colors">
+                          <Upload className="w-5 h-5 text-slate-500 group-hover:text-blue-600" />
+                        </div>
+                        <p className="text-sm font-medium text-slate-700">
+                          Click to upload <span className="text-slate-400 font-normal">or drag and drop</span>
+                        </p>
+                        <p className="text-xs text-slate-400 mt-2 uppercase tracking-wide font-medium">
+                          RIS, BibTeX, CSV
+                        </p>
+                      </div>
+                      <input
+                        id="bibliography-upload"
+                        type="file"
+                        className="hidden"
+                        accept=".ris,.bib,.bibtex,.csv"
+                        onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                      />
+                    </label>
                   </div>
-                </div>
-                {insights && (
-                  <div className="space-y-2 pt-2 border-t border-border">
-                    <h4 className="font-mono text-[10px] uppercase tracking-widest text-muted">Stats</h4>
-                    <div className="text-xs font-mono space-y-1">
-                      <p>{insights.nodeCount} nodes</p>
-                      <p>{insights.edgeCount} connections</p>
-                      <p>Avg degree: {insights.avgDegree.toFixed(1)}</p>
+                ) : (
+                  <div className="relative flex items-center p-3 border border-slate-200 rounded-lg bg-slate-50">
+                    <div className="p-2 bg-white border border-slate-200 rounded md:mr-3 shadow-sm">
+                      <FileText className="w-5 h-5 text-slate-500" />
                     </div>
+                    <div className="flex-1 min-w-0 ml-3">
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        {importFile.name}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {(importFile.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setImportFile(null)}
+                      className="p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 rounded-md transition-colors"
+                    >
+                      <XIcon className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Selection Details Panel (Floating) */}
-            <AnimatePresence>
-              {selectedNodeData && (
-                <motion.div
-                  initial={{ x: 400, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  exit={{ x: 400, opacity: 0 }}
-                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                  className="absolute top-0 right-0 h-full w-96 bg-white border-l border-border shadow-editorial z-20 p-8 space-y-8 overflow-y-auto"
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setShowImportDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleBibliographyImport}
+                  disabled={!importFile || isImporting}
+                  className="min-w-[120px]"
                 >
-                  <div className="flex justify-between items-start">
-                    <span className="px-2 py-1 bg-intel-blue/10 text-intel-blue text-[10px] font-mono uppercase tracking-widest rounded-sm">
-                      {selectedNodeData.type === 'work' && 'Paper'}
-                      {selectedNodeData.type === 'author' && 'Author'}
-                      {selectedNodeData.type === 'topic' && 'Topic'}
-                      {selectedNodeData.type === 'journal' && 'Journal'}
-                      {selectedNodeData.type === 'core' && 'Core Paper'}
-                      {!['work', 'author', 'topic', 'journal', 'core'].includes(selectedNodeData.type as string) && 'Node'}
-                    </span>
-                    <button onClick={() => {
-                      setSelectedNodeData(null);
-                      cyRef.current?.nodes().unselect();
-                    }} className="p-2 hover:bg-paper transition-colors rounded-full text-muted hover:text-ink"><XIcon className="w-4 h-4" /></button>
-                  </div>
-                  <div className="space-y-4">
-                    <h3 className="text-3xl font-serif leading-tight">{selectedNodeData.label as React.ReactNode}</h3>
-                    <p className="text-muted font-serif italic text-sm">Influence Score: {(Math.random() * 0.9 + 0.1).toFixed(2)}</p>
-                  </div>
-                  <div className="accent-line" />
-                  <div className="space-y-6">
-                    <div className="space-y-3">
-                      <h4 className="font-mono text-[10px] uppercase tracking-widest text-muted">Influence Metrics</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <MetricBox label="Citations" value={Math.floor(Math.random() * 100).toString()} />
-                        <MetricBox label="PageRank" value={(Math.random() * 0.9 + 0.1).toFixed(2)} />
-                      </div>
-                    </div>
-                    <div className="space-y-3">
-                      <h4 className="font-mono text-[10px] uppercase tracking-widest text-muted">Key Connections</h4>
-                      <ul className="text-sm font-serif italic space-y-3">
-                        <li className="hover:text-intel-blue cursor-pointer transition-colors border-b border-border/50 pb-2 flex justify-between items-center group/item">
-                          <span>Cited by 12 papers</span>
-                          <PlusIcon className="w-3 h-3 opacity-0 group-hover/item:opacity-100 transition-opacity" />
-                        </li>
-                        <li className="hover:text-intel-blue cursor-pointer transition-colors border-b border-border/50 pb-2 flex justify-between items-center group/item">
-                          <span>References 45 works</span>
-                          <PlusIcon className="w-3 h-3 opacity-0 group-hover/item:opacity-100 transition-opacity" />
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                  <div className="pt-8 space-y-4">
-                    <button className="btn-editorial w-full">Save to Library</button>
-                    <button className="w-full py-3 border border-border font-serif italic hover:bg-paper transition-all">View Full Metadata</button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {isImporting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Generate
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      ) : (
+        <>
+          {/* Visualizer Shell */}
+          <div className="absolute inset-0 w-full h-full z-0 bg-slate-50/30">
+            {elements.length > 0 && (
+              <CytoscapeComponent
+                elements={CytoscapeComponent.normalizeElements(elements)}
+                style={{ width: '100%', height: '100%' }}
+                stylesheet={stylesheet as any}
+                cy={(cy: cytoscape.Core) => {
+                  cyRef.current = cy;
 
-            {/* Interaction Indicator */}
-            <div className="absolute bottom-6 right-6 pointer-events-none">
-              <div className="bg-white/80 backdrop-blur-md border border-border px-4 py-2 flex items-center gap-2 rounded-sm shadow-sm">
-                <MousePointer2 className="w-3 h-3 text-muted" />
-                <span className="text-[10px] font-mono uppercase tracking-widest text-muted">Drag nodes or zoom to explore</span>
+                  cy.on('tap', 'node', (evt: cytoscape.EventObject) => {
+                    const node = evt.target;
+                    setSelectedNodeData(node.data());
+                  });
+
+                  cy.on('tap', (evt: cytoscape.EventObject) => {
+                    if (evt.target === cy) {
+                      setSelectedNodeData(null);
+                    }
+                  });
+                }}
+                layout={layoutConfig as any}
+                wheelSensitivity={0.3}
+                minZoom={0.1}
+                maxZoom={4}
+              />
+            )}
+          </div>
+
+          {/* Controls */}
+          <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+            <div className="bg-white/90 backdrop-blur border border-slate-200 shadow-sm p-1.5 flex flex-col gap-1 rounded-lg">
+              <GraphControl icon={<ZoomIn className="w-4 h-4" />} label="Zoom In" onClick={handleZoomIn} />
+              <GraphControl icon={<ZoomOut className="w-4 h-4" />} label="Zoom Out" onClick={handleZoomOut} />
+              <GraphControl icon={<Maximize className="w-4 h-4" />} label="Fit View" onClick={handleFitView} />
+            </div>
+          </div>
+
+          {/* Search & Legend */}{/* NOTE: Updated styles for Search/Legend container to match modern look */}
+          <div className="absolute top-4 right-4 flex flex-col gap-4 z-10 w-64">
+            <div className="bg-white/90 backdrop-blur border border-slate-200 shadow-sm p-3 space-y-3 rounded-lg">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search nodes..."
+                  value={nodeSearch}
+                  onChange={(e) => handleNodeSearch(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 pl-8 pr-2 py-1.5 text-xs rounded-md outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 transition-all placeholder:text-slate-400"
+                />
+                {nodeSearch && (
+                  <button
+                    onClick={() => handleNodeSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <XIcon className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Legend</h4>
+                <div className="space-y-1">
+                  {/* Legend Items using generic component but passing new classes if needed, assuming component handles classes */}
+                  {/* We might need to update GraphLegendItem too, but for now we rely on the component accepting these props or being simple enough */}
+                  {/* Actually, let's just inline the map logic or trust currentGraphData structure */}
+                  {currentGraphData?.nodes.some((n) => n.type === "work") && (
+                    <GraphLegendItem color="bg-blue-500" label="Papers" />
+                  )}
+                  {currentGraphData?.nodes.some((n) => n.type === "author") && (
+                    <GraphLegendItem color="bg-green-500" label="Authors" />
+                  )}
+                  {currentGraphData?.nodes.some((n) => n.type === "topic") && (
+                    <GraphLegendItem color="bg-yellow-500" label="Topics" />
+                  )}
+                </div>
               </div>
             </div>
-          </>
-        )}
-      </div>
+          </div>
 
-      {!isEmpty && insights && (
-        <div className="bg-intel-blue/5 border border-intel-blue/20 p-8 flex gap-8 rounded-sm">
-          <div className="w-12 h-12 bg-white border border-intel-blue/20 flex items-center justify-center shrink-0 shadow-sm">
-            <Sparkles className="w-6 h-6 text-intel-blue" />
-          </div>
-          <div className="space-y-2">
-            <h3 className="font-serif italic text-xl text-intel-blue font-bold">Graph Insights</h3>
-            <p className="text-intel-blue/70 font-serif italic leading-relaxed max-w-3xl">
-              {graphType === "TOPIC_CLUSTER" ? (
-                <>
-                  Your research spans <strong>{insights.topicCount} distinct topics</strong> across {insights.workCount} papers.
-                  {insights.mostConnected && (
-                    <> The most central theme is "<strong>{insights.mostConnected}</strong>" with {insights.mostConnectedDegree} connections.</>
-                  )}
-                  {insights.density > 0.3 && " The high network density suggests strong thematic coherence in your review."}
-                  {insights.density < 0.1 && " The low network density indicates diverse, loosely connected research areas."}
-                </>
-              ) : (
-                <>
-                  Your project includes work from <strong>{insights.authorCount} unique authors</strong>.
-                  {insights.mostConnected && (
-                    <> The most collaborative author is "<strong>{insights.mostConnected}</strong>" with {insights.mostConnectedDegree} co-authorships.</>
-                  )}
-                  {insights.avgDegree > 3 && " Strong collaboration patterns detected across the research community."}
-                </>
-              )}
-            </p>
-          </div>
-        </div>
+          {/* Selection Panel */}
+          <AnimatePresence>
+            {selectedNodeData && (
+              <motion.div
+                initial={{ x: 350, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: 350, opacity: 0 }}
+                transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                className="absolute top-0 right-0 h-full w-80 bg-white border-l border-slate-200 shadow-xl z-20 p-6 overflow-y-auto"
+              >
+                <div className="flex justify-between items-start mb-6">
+                  <span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] uppercase font-bold tracking-wider rounded">
+                    {String(selectedNodeData.type)}
+                  </span>
+                  <button onClick={() => {
+                    setSelectedNodeData(null);
+                    cyRef.current?.nodes().unselect();
+                  }} className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600"><XIcon className="w-4 h-4" /></button>
+                </div>
+
+                <h3 className="text-xl font-bold text-slate-900 leading-snug mb-2">{String(selectedNodeData.label)}</h3>
+
+                {/* Placeholder Stats */}
+                <div className="space-y-4 mt-6">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                      <p className="text-[10px] text-slate-500 uppercase font-medium">Degree</p>
+                      <p className="text-lg font-semibold text-slate-900">{(Math.random() * 20).toFixed(0)}</p>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded border border-slate-100">
+                      <p className="text-[10px] text-slate-500 uppercase font-medium">Centrality</p>
+                      <p className="text-lg font-semibold text-slate-900">{(Math.random()).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-8 pt-6 border-t border-slate-100">
+                  <p className="text-xs text-slate-400 mb-4">ACTIONS</p>
+                  <Button className="w-full mb-2 bg-blue-600 hover:bg-blue-700">Explore Connections</Button>
+                  <Button variant="outline" className="w-full">View Details</Button>
+                </div>
+
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
       )}
+
+      {
+        !isEmpty && insights && (
+          <div className="bg-intel-blue/5 border border-intel-blue/20 p-8 flex gap-8 rounded-sm">
+            <div className="w-12 h-12 bg-white border border-intel-blue/20 flex items-center justify-center shrink-0 shadow-sm">
+              <Sparkles className="w-6 h-6 text-intel-blue" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-serif italic text-xl text-intel-blue font-bold">Graph Insights</h3>
+              <p className="text-intel-blue/70 font-serif italic leading-relaxed max-w-3xl">
+                {graphType === "TOPIC_CLUSTER" ? (
+                  <>
+                    Your research spans <strong>{insights.topicCount} distinct topics</strong> across {insights.workCount} papers.
+                    {insights.mostConnected && (
+                      <> The most central theme is "<strong>{insights.mostConnected}</strong>" with {insights.mostConnectedDegree} connections.</>
+                    )}
+                    {insights.density > 0.3 && " The high network density suggests strong thematic coherence in your review."}
+                    {insights.density < 0.1 && " The low network density indicates diverse, loosely connected research areas."}
+                  </>
+                ) : (
+                  <>
+                    Your project includes work from <strong>{insights.authorCount} unique authors</strong>.
+                    {insights.mostConnected && (
+                      <> The most collaborative author is "<strong>{insights.mostConnected}</strong>" with {insights.mostConnectedDegree} co-authorships.</>
+                    )}
+                    {insights.avgDegree > 3 && " Strong collaboration patterns detected across the research community."}
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+        )
+      }
 
       {/* Project Selection Dialog */}
       <Dialog open={showProjectSelect} onOpenChange={setShowProjectSelect}>
@@ -904,7 +878,7 @@ export function CitationGraph() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }
 

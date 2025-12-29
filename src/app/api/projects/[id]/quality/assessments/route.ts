@@ -11,8 +11,8 @@ import {
   paginated,
   buildPaginationArgs,
 } from "@/lib/api";
-import { 
-  saveAssessment, 
+import {
+  saveAssessment,
   getProjectAssessmentSummary,
   getStudyAssessmentProgress,
   calculateOverallScore,
@@ -84,9 +84,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     });
 
     const status = searchParams.get("status");
+    const projectWorkId = searchParams.get("projectWorkId");
+
     const where: Record<string, unknown> = { projectId };
     if (toolId) where.toolId = toolId;
     if (status) where.status = status;
+    if (projectWorkId) where.projectWorkId = projectWorkId;
 
     const [total, assessments] = await Promise.all([
       db.qualityAssessment.count({ where }),
@@ -164,14 +167,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { 
-      projectWorkId, 
-      toolId, 
-      domainScores, 
-      overallScore, 
-      overallJustification, 
+    const {
+      projectWorkId,
+      toolId,
+      domainScores,
+      overallScore,
+      overallJustification,
       complete,
-      autoCalculateOverall 
+      autoCalculateOverall
     } = saveAssessmentSchema.parse(body);
 
     // Verify study belongs to project

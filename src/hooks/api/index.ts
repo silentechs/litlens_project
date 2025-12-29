@@ -30,7 +30,6 @@ export {
   useConflicts,
   useConflict,
   useResolveConflict,
-  useEscalateConflict,
 } from "./use-screening";
 
 // Library

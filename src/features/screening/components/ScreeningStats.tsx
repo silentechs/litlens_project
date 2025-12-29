@@ -1,4 +1,5 @@
 import type { ScreeningPhase } from "@/types/screening";
+import type { ProjectStats as ProjectStatsType } from "@/types/project";
 import {
     AlertCircle,
     CheckCircle2,
@@ -16,6 +17,8 @@ import { useParams } from "next/navigation";
 
 interface ScreeningStatsProps {
     currentPhase: ScreeningPhase;
+    projectStats?: ProjectStatsType;
+    enabledPhases?: ScreeningPhase[];
     stats: {
         completed: boolean;
         totalPending: number;
@@ -38,6 +41,8 @@ interface ScreeningStatsProps {
 
 export function ScreeningStats({
     currentPhase,
+    projectStats,
+    enabledPhases,
     stats,
     onRefresh,
     onResolveConflicts,
@@ -77,6 +82,7 @@ export function ScreeningStats({
                     <PhaseSelector
                         currentPhase={currentPhase}
                         onPhaseChange={onPhaseChange}
+                        enabledPhases={enabledPhases}
                         className="w-full max-w-md"
                     />
                 </motion.div>
@@ -92,6 +98,17 @@ export function ScreeningStats({
                     You have no pending studies in the <span className="font-bold text-ink">{currentPhase}</span> phase.
                     Here is the team's progress.
                 </p>
+                {projectStats && (
+                    <p className="text-xs font-mono uppercase tracking-widest text-muted">
+                        Project total: <span className="text-ink font-bold">{projectStats.totalStudies}</span> studies
+                        {" · "}
+                        Pending: <span className="text-ink font-bold">{projectStats.pendingScreening}</span>
+                        {" · "}
+                        Excluded: <span className="text-ink font-bold">{projectStats.excluded}</span>
+                        {" · "}
+                        Included: <span className="text-ink font-bold">{projectStats.included}</span>
+                    </p>
+                )}
             </motion.div>
 
             {/* Main Stats Grid */}
@@ -102,11 +119,16 @@ export function ScreeningStats({
                         <BarChart3 className="w-24 h-24" />
                     </div>
                     <div className="relative z-10">
-                        <span className="text-[10px] font-mono uppercase tracking-widest text-muted">Total Screened</span>
-                        <div className="text-5xl font-serif mt-2 text-ink">{stats.phaseStats.total}</div>
+                        <span className="text-[10px] font-mono uppercase tracking-widest text-muted">
+                            Total Studies (Project)
+                        </span>
+                        <div className="text-5xl font-serif mt-2 text-ink">
+                            {projectStats?.totalStudies ?? stats.phaseStats.total}
+                        </div>
                         <div className="flex gap-4 mt-4 text-xs font-mono text-muted">
-                            <span>Inc: {stats.phaseStats.included}</span>
-                            <span>Exc: {stats.phaseStats.excluded}</span>
+                            <span>Pending: {projectStats?.pendingScreening ?? "-"}</span>
+                            <span>Exc: {projectStats?.excluded ?? "-"}</span>
+                            <span>Inc: {projectStats?.included ?? "-"}</span>
                         </div>
                     </div>
                 </div>
@@ -156,7 +178,7 @@ export function ScreeningStats({
                                 "text-[10px] font-mono uppercase tracking-widest",
                                 stats.remainingReviewers > 0 ? "text-blue-700 font-bold" : "text-muted"
                             )}>
-                                Pending Reviewers
+                                Studies Awaiting Review
                             </span>
                             {stats.remainingReviewers > 0 ? (
                                 <Clock className="w-5 h-5 text-blue-600 animate-spin-slow" />
@@ -176,7 +198,7 @@ export function ScreeningStats({
                             "text-xs mt-4",
                             stats.remainingReviewers > 0 ? "text-blue-700" : "text-muted"
                         )}>
-                            {stats.remainingReviewers > 0 ? "Waiting for team..." : "All caught up"}
+                            {stats.remainingReviewers > 0 ? "Awaiting additional reviews..." : "All caught up"}
                         </div>
                     </div>
                 </div>

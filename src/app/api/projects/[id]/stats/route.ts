@@ -98,6 +98,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       byPhase.map((p) => [p.phase, p._count])
     );
 
+    const phaseTotals = {
+      titleAbstract: phaseCounts.TITLE_ABSTRACT || 0,
+      fullText: phaseCounts.FULL_TEXT || 0,
+      final: phaseCounts.FINAL || 0,
+    };
+
     const conflictCounts = Object.fromEntries(
       conflictStats.map((c) => [c.status, c._count])
     );
@@ -135,6 +141,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           completed: 0, // Would need more complex query
           percentage: 0,
         },
+        final: {
+          total: phaseCounts.FINAL || 0,
+          completed: 0, // Would need more complex query
+          percentage: 0,
+        },
         extraction: {
           total: statusCounts.INCLUDED || 0,
           completed: extractionCounts.COMPLETED || 0,
@@ -150,6 +161,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             : 0,
         },
       },
+      phaseTotals,
     };
 
     return success(stats);

@@ -7,6 +7,10 @@ import { useState, useEffect, use } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
+import { KeywordManager } from "@/features/screening/components/KeywordManager";
+import { PICOSForm } from "@/features/screening/components/PICOSForm";
+import { ExportMenu } from "@/features/projects/components/ExportMenu";
+import { Download } from "lucide-react";
 
 export default function ProjectSettingsPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = use(params);
@@ -18,6 +22,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ id: 
     const [requireDualScreening, setRequireDualScreening] = useState(false);
     const [blindScreening, setBlindScreening] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [criteria, setCriteria] = useState<any>(null);
 
     useEffect(() => {
         if (project) {
@@ -25,6 +30,22 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ id: 
             setBlindScreening(project.blindScreening);
         }
     }, [project]);
+
+    // Fetch eligibility criteria
+    useEffect(() => {
+        if (id) {
+            fetch(`/api/projects/${id}/eligibility-criteria`, {
+                credentials: "include",
+            })
+                .then((res) => res.json())
+                .then((data) => {
+                    if (data.data?.exists) {
+                        setCriteria(data.data.criteria);
+                    }
+                })
+                .catch(console.error);
+        }
+    }, [id]);
 
     const handleSave = () => {
         updateProject.mutate(
@@ -60,6 +81,22 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ id: 
     const handleToggle = (setter: (val: boolean) => void, val: boolean) => {
         setter(val);
         setHasChanges(true);
+    };
+
+    const handleUpdateKeywords = async (keywords: string[]) => {
+        const response = await fetch(`/api/projects/${id}/keywords`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ keywords }),
+            credentials: "include",
+        });
+
+        if (!response.ok) {
+            throw new Error("Failed to update keywords");
+        }
+
+        // Refetch project to update keywords in UI
+        return response.json();
     };
 
     if (isLoading) {
@@ -132,6 +169,54 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ id: 
                                 onCheckedChange={(val) => handleToggle(setBlindScreening, val)}
                             />
                         </div>
+                    </div>
+                </section>
+
+                {/* Eligibility Criteria (PICOS) Section */}
+                <section className="space-y-6">
+                    <PICOSForm
+                        projectId={id}
+                        initialData={criteria}
+                        onSave={() => {
+                            // Refetch criteria
+                            fetch(`/api/projects/${id}/eligibility-criteria`, {
+                                credentials: "include",
+                            })
+                                .then((res) => res.json())
+                                .then((data) => {
+                                    if (data.data?.exists) {
+                                        setCriteria(data.data.criteria);
+                                    }
+                                })
+                                .catch(console.error);
+                        }}
+                    />
+                </section>
+
+                {/* Keyword Highlighting Section */}
+                <section className="space-y-6">
+                    <div className="bg-white border border-border rounded-sm p-6">
+                        <KeywordManager
+                            keywords={project.highlightKeywords || []}
+                            onUpdate={handleUpdateKeywords}
+                        />
+                    </div>
+                </section>
+
+                {/* Data Management Section */}
+                <section className="space-y-6">
+                    <h2 className="text-xl font-serif font-bold flex items-center gap-3">
+                        <Download className="w-5 h-5" />
+                        Data Management
+                    </h2>
+                    <div className="bg-white border border-border rounded-sm p-6 flex items-center justify-between">
+                        <div>
+                            <h3 className="text-base font-bold text-ink">Export Project Data</h3>
+                            <p className="text-sm text-muted mt-1 max-w-md">
+                                Download your study data, screening decisions, and extractions in various formats (CSV, Excel, RIS).
+                            </p>
+                        </div>
+                        <ExportMenu projectId={id} />
                     </div>
                 </section>
 

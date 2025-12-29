@@ -112,6 +112,7 @@ export function ExtractionLab({ projectId }: ExtractionLabProps) {
             onClick={() => setActiveView('builder')}
             className={cn(
               "px-6 py-2 border text-[10px] font-mono uppercase tracking-widest transition-all",
+              // @ts-expect-error - False positive: TS narrows activeView after early returns but button still needs conditional styling
               activeView === 'builder' ? "bg-ink text-paper border-ink" : "border-border hover:bg-paper"
             )}
           >

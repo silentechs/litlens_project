@@ -50,7 +50,15 @@ export function ScreeningAnalytics({ projectId }: ScreeningAnalyticsProps) {
 
     if (!data) return null;
 
-    const { overview, reviewers, timeline, conflicts, interRaterReliability } = data;
+    // Destructure with safe defaults to prevent undefined access
+    const overview = data.overview || { overall: { percentComplete: 0, totalDecisions: 0 }, byPhase: {} };
+    const reviewers = data.reviewers || [];
+    const timeline = data.timeline || [];
+    const conflicts = data.conflicts || { total: 0, pending: 0, resolved: 0 };
+    const interRaterReliability = data.interRaterReliability || { kappa: null };
+
+    // Ensure overview.overall exists
+    const overallStats = overview.overall || { percentComplete: 0, totalDecisions: 0 };
 
     const container = {
         hidden: { opacity: 0 },
@@ -94,11 +102,11 @@ export function ScreeningAnalytics({ projectId }: ScreeningAnalyticsProps) {
                             <span className="text-[10px] font-mono uppercase tracking-widest text-muted">Completion</span>
                             <TrendingUp className="w-4 h-4 text-emerald-500" />
                         </div>
-                        <div className="text-4xl font-serif mt-2">{overview.overall.percentComplete.toFixed(1)}%</div>
+                        <div className="text-4xl font-serif mt-2">{overallStats.percentComplete.toFixed(1)}%</div>
                         <div className="mt-2 h-1 bg-paper w-full rounded-full overflow-hidden">
                             <div
                                 className="h-full bg-ink transition-all duration-1000"
-                                style={{ width: `${overview.overall.percentComplete}%` }}
+                                style={{ width: `${overallStats.percentComplete}%` }}
                             />
                         </div>
                     </motion.div>
@@ -132,7 +140,7 @@ export function ScreeningAnalytics({ projectId }: ScreeningAnalyticsProps) {
                             <span className="text-[10px] font-mono uppercase tracking-widest text-muted">Decisions</span>
                             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                         </div>
-                        <div className="text-4xl font-serif mt-2">{overview.overall.totalDecisions}</div>
+                        <div className="text-4xl font-serif mt-2">{overallStats.totalDecisions}</div>
                         <div className="text-[10px] font-mono uppercase tracking-widest text-muted mt-2">
                             Total judgments across team
                         </div>

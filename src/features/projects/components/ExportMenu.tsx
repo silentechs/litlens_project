@@ -4,30 +4,32 @@ import { useState } from "react";
 import {
     Download,
     FileText,
-    Table as TableIcon,
+    FileSpreadsheet,
     FileJson,
-    Database,
-    ChevronRight,
-    Loader2,
-    Check
+    Check,
+    Loader2
 } from "lucide-react";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-    DropdownMenuSub,
-    DropdownMenuSubTrigger,
-    DropdownMenuSubContent
-} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { exportApi, type ExportParams } from "@/lib/api-client";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { exportApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 interface ExportMenuProps {
     projectId: string;
@@ -35,117 +37,185 @@ interface ExportMenuProps {
 }
 
 export function ExportMenu({ projectId, className }: ExportMenuProps) {
+    const [isOpen, setIsOpen] = useState(false);
     const [isExporting, setIsExporting] = useState(false);
-    const [options, setOptions] = useState({
-        includeScreeningData: true,
-        includeExtractionData: true,
-        includeQualityAssessments: true,
-        studyFilter: "all" as "all" | "included" | "excluded" | "pending"
-    });
 
-    const handleExport = async (format: ExportParams["format"]) => {
-        setIsExporting(true);
+    // Export Options
+    const [format, setFormat] = useState<"csv" | "excel" | "ris" | "json">("csv");
+    const [scope, setScope] = useState<"all" | "included" | "excluded" | "pending">("included");
+
+    // Data Inclusion Options
+    const [includeScreening, setIncludeScreening] = useState(true);
+    const [includeExtraction, setIncludeExtraction] = useState(false);
+    const [includeQuality, setIncludeQuality] = useState(false);
+
+    const handleExport = async () => {
         try {
-            await exportApi.exportStudies(projectId, {
+            setIsExporting(true);
+
+            // Trigger the export download
+            exportApi.exportStudies(projectId, {
                 format,
-                ...options
+                studyFilter: scope,
+                includeScreeningData: includeScreening,
+                includeExtractionData: includeExtraction,
+                includeQualityAssessments: includeQuality
             });
-            toast.success(`Exporting as ${format.toUpperCase()}...`);
+
+            // Show success message (download happens via browser navigation)
+            toast.success("Export started");
+            setIsOpen(false);
         } catch (error) {
             console.error("Export failed", error);
-            toast.error("Export failed. Please try again.");
+            toast.error("Failed to start export");
         } finally {
             setIsExporting(false);
         }
     };
 
+    const getFormatIcon = (fmt: string) => {
+        switch (fmt) {
+            case "excel": return <FileSpreadsheet className="w-4 h-4 ml-2" />;
+            case "json": return <FileJson className="w-4 h-4 ml-2" />;
+            case "ris": return <FileText className="w-4 h-4 ml-2" />;
+            default: return <FileText className="w-4 h-4 ml-2" />;
+        }
+    };
+
     return (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button
-                    variant="outline"
-                    className={cn("gap-2 font-serif italic", className)}
-                    disabled={isExporting}
-                >
-                    {isExporting ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <Download className="w-4 h-4" />
-                    )}
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button variant="outline" className={`gap-2 ${className || ''}`}>
+                    <Download className="w-4 h-4" />
                     Export Data
                 </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72 p-2 shadow-editorial border-border">
-                <DropdownMenuLabel className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground px-2 py-3">
-                    Export Configuration
-                </DropdownMenuLabel>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="font-serif text-xl">Export Project Data</DialogTitle>
+                    <DialogDescription>
+                        Download your study data, screening decisions, and extractions.
+                    </DialogDescription>
+                </DialogHeader>
 
-                <div className="px-2 py-4 space-y-4 bg-paper/50 rounded-sm mb-2 border border-border/40">
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="inc-screening" className="text-xs font-serif italic cursor-pointer">Screening Data</Label>
-                        <Switch
-                            id="inc-screening"
-                            checked={options.includeScreeningData}
-                            onCheckedChange={(val) => setOptions(prev => ({ ...prev, includeScreeningData: val }))}
-                        />
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <Label htmlFor="inc-extraction" className="text-xs font-serif italic cursor-pointer">Extraction Data</Label>
-                        <Switch
-                            id="inc-extraction"
-                            checked={options.includeExtractionData}
-                            onCheckedChange={(val) => setOptions(prev => ({ ...prev, includeExtractionData: val }))}
-                        />
-                    </div>
-                    <div className="flex items-center justify-between border-t border-border/20 pt-4">
-                        <Label className="text-xs font-serif italic">Filter</Label>
-                        <div className="flex bg-white border border-border rounded-full p-1">
-                            {(["all", "included"] as const).map((f) => (
-                                <button
-                                    key={f}
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        setOptions(prev => ({ ...prev, studyFilter: f }));
-                                    }}
-                                    className={cn(
-                                        "px-3 py-1 text-[9px] font-mono uppercase tracking-tighter rounded-full transition-all",
-                                        options.studyFilter === f ? "bg-ink text-paper shadow-sm" : "text-muted hover:text-ink"
-                                    )}
-                                >
-                                    {f}
-                                </button>
-                            ))}
+                <div className="space-y-6 py-4">
+
+                    {/* Format Selection */}
+                    <div className="space-y-2">
+                        <Label>Export Format</Label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button
+                                variant={format === "csv" ? "default" : "outline"}
+                                onClick={() => setFormat("csv")}
+                                className={format === "csv" ? "bg-ink text-white" : ""}
+                                size="sm"
+                            >
+                                CSV
+                            </Button>
+                            <Button
+                                variant={format === "excel" ? "default" : "outline"}
+                                onClick={() => setFormat("excel")}
+                                className={format === "excel" ? "bg-ink text-white" : ""}
+                                size="sm"
+                            >
+                                Excel
+                            </Button>
+                            <Button
+                                variant={format === "ris" ? "default" : "outline"}
+                                onClick={() => setFormat("ris")}
+                                className={format === "ris" ? "bg-ink text-white" : ""}
+                                size="sm"
+                            >
+                                RIS (Citation)
+                            </Button>
+                            <Button
+                                variant={format === "json" ? "default" : "outline"}
+                                onClick={() => setFormat("json")}
+                                className={format === "json" ? "bg-ink text-white" : ""}
+                                size="sm"
+                            >
+                                JSON
+                            </Button>
                         </div>
                     </div>
+
+                    {/* Scope Selection */}
+                    <div className="space-y-2">
+                        <Label>Studies to Include</Label>
+                        <Select
+                            value={scope}
+                            onValueChange={(val: any) => setScope(val)}
+                        >
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select scope" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Studies (Complete Library)</SelectItem>
+                                <SelectItem value="included">Included Only</SelectItem>
+                                <SelectItem value="excluded">Excluded Only</SelectItem>
+                                <SelectItem value="pending">Pending Only</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Detailed Data Toggles */}
+                    <div className="space-y-4">
+                        <Label>Additional Data</Label>
+
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Screening Decisions</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Include votes, timestamps, and confidence scores
+                                </p>
+                            </div>
+                            <Switch
+                                checked={includeScreening}
+                                onCheckedChange={setIncludeScreening}
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Extraction Data</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Include structured data from extraction forms
+                                </p>
+                            </div>
+                            <Switch
+                                checked={includeExtraction}
+                                onCheckedChange={setIncludeExtraction}
+                                disabled={format === 'ris'} // RIS doesn't support custom fields easily
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label className="text-base">Quality Assessments</Label>
+                                <p className="text-xs text-muted-foreground">
+                                    Include risk of bias / quality scores
+                                </p>
+                            </div>
+                            <Switch
+                                checked={includeQuality}
+                                onCheckedChange={setIncludeQuality}
+                                disabled={format === 'ris'}
+                            />
+                        </div>
+                    </div>
+
                 </div>
 
-                <DropdownMenuSeparator />
-
-                <DropdownMenuItem className="gap-3 py-3 font-serif italic cursor-pointer" onClick={() => handleExport("csv")}>
-                    <TableIcon className="w-4 h-4 text-emerald-600" />
-                    Comma Separated (CSV)
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-3 py-3 font-serif italic cursor-pointer" onClick={() => handleExport("excel")}>
-                    <FileText className="w-4 h-4 text-blue-600" />
-                    Excel Spreadsheet
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-3 py-3 font-serif italic cursor-pointer" onClick={() => handleExport("ris")}>
-                    <Database className="w-4 h-4 text-amber-600" />
-                    RIS (Citation Manager)
-                </DropdownMenuItem>
-                <DropdownMenuItem className="gap-3 py-3 font-serif italic cursor-pointer" onClick={() => handleExport("json")}>
-                    <FileJson className="w-4 h-4 text-purple-600" />
-                    JSON Format
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator />
-
-                <DropdownMenuItem className="gap-3 py-3 font-serif italic cursor-pointer opacity-50 cursor-not-allowed">
-                    <Database className="w-4 h-4" />
-                    BibTeX Library
-                    <span className="ml-auto text-[9px] font-mono uppercase tracking-tighter bg-paper px-2 py-0.5 rounded-full">Soon</span>
-                </DropdownMenuItem>
-            </DropdownMenuContent>
-        </DropdownMenu>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsOpen(false)}>
+                        Cancel
+                    </Button>
+                    <Button onClick={handleExport} disabled={isExporting} className="bg-ink text-white hover:bg-ink/90">
+                        {isExporting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Download className="w-4 h-4 mr-2" />}
+                        Download {format.toUpperCase()}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }

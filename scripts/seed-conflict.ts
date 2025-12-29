@@ -1,14 +1,9 @@
 import * as dotenv from "dotenv";
 dotenv.config();
 
-// Must import after dotenv config
-// Dynamic import moved inside main
-
+import { db } from "../src/lib/db";
 
 async function main() {
-    // Dynamic import to ensure env is loaded
-    const { db } = await import("../src/lib/db");
-
     const projectId = "cmjnk0yyc0000nrk2j58zkiok"; // From user's URL
 
     console.log(`Seeding conflict for project: ${projectId}`);

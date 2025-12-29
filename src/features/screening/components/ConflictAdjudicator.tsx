@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
 import {
   Check,
   X,
@@ -16,7 +16,9 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useConflicts, useResolveConflict } from "@/features/screening/api/queries";
+import { useProject } from "@/features/projects/api/queries";
 import type { Conflict as ConflictType } from "@/lib/api-client";
+import { toast } from "sonner";
 
 // Local interfaces replaced by api-client types
 
@@ -24,6 +26,8 @@ export function ConflictAdjudicator() {
   const params = useParams();
   const projectId = params.id as string;
 
+  const { data: session } = useSession();
+  const { data: project } = useProject(projectId);
   const { data, isLoading, refetch } = useConflicts(projectId, { status: "PENDING" });
 
   const resolveConflict = useResolveConflict(projectId);
@@ -31,8 +35,18 @@ export function ConflictAdjudicator() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const activeConflict = (conflicts[currentIndex] as unknown as ConflictType) || undefined;
 
+  const currentUserId = session?.user?.id;
+  const currentRole = project?.members?.find((m) => m.userId === currentUserId)?.role;
+  const canAdjudicate = currentRole ? ["OWNER", "LEAD"].includes(currentRole) : false;
+  const adjudicationDisabled = resolveConflict.isPending || !canAdjudicate;
+
   const handleResolve = async (decision: 'INCLUDE' | 'EXCLUDE' | 'MAYBE') => {
     if (!activeConflict) return;
+
+    if (!canAdjudicate) {
+      toast.error("Only project leads can resolve conflicts");
+      return;
+    }
 
     try {
       await resolveConflict.mutateAsync({
@@ -40,6 +54,7 @@ export function ConflictAdjudicator() {
         finalDecision: decision,
         reasoning: "Adjudicated via Adjudicator Mode"
       });
+      toast.success("Conflict resolved");
       // Move to next or refresh
       if (conflicts.length > 1) {
         setCurrentIndex(prev => (prev + 1) % (conflicts.length - 1));
@@ -47,6 +62,7 @@ export function ConflictAdjudicator() {
       refetch();
     } catch (error) {
       console.error("Failed to resolve conflict", error);
+      toast.error(error instanceof Error ? error.message : "Failed to resolve conflict");
     }
   };
 
@@ -130,23 +146,44 @@ export function ConflictAdjudicator() {
                 <p className="text-paper/60 font-serif italic">Your decision will override the current discrepancy and advance the study.</p>
               </div>
 
+              {!canAdjudicate && (
+                <div className="border border-rose-500/30 bg-rose-500/10 p-4 flex items-start gap-3">
+                  <AlertTriangle className="w-4 h-4 text-rose-200 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-mono text-[10px] uppercase tracking-widest text-rose-200">
+                      Permission required
+                    </p>
+                    <p className="text-paper/80 font-serif italic text-sm">
+                      Only project owners/leads can resolve conflicts. Your role:{" "}
+                      <span className="font-serif not-italic font-semibold">{currentRole || "UNKNOWN"}</span>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-4">
                 <FinalAction
                   label="Include"
                   icon={resolveConflict.isPending ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Check className="w-5 h-5" />}
                   color="green"
+                  disabled={adjudicationDisabled}
+                  title={!canAdjudicate ? "Only project owners/leads can resolve conflicts" : undefined}
                   onClick={() => handleResolve('INCLUDE')}
                 />
                 <FinalAction
                   label="Exclude"
                   icon={resolveConflict.isPending ? <div className="w-4 h-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <X className="w-5 h-5" />}
                   color="red"
+                  disabled={adjudicationDisabled}
+                  title={!canAdjudicate ? "Only project owners/leads can resolve conflicts" : undefined}
                   onClick={() => handleResolve('EXCLUDE')}
                 />
                 <FinalAction
                   label="Undecided"
                   icon={<MessageSquare className="w-5 h-5" />}
                   color="muted"
+                  disabled={adjudicationDisabled}
+                  title={!canAdjudicate ? "Only project owners/leads can resolve conflicts" : undefined}
                   onClick={() => handleResolve('MAYBE')}
                 />
               </div>
@@ -194,7 +231,21 @@ function DecisionBadge({ decision }: { decision: string }) {
   );
 }
 
-function FinalAction({ label, icon, color, onClick }: { label: string, icon: React.ReactNode, color: 'green' | 'red' | 'muted', onClick: () => void }) {
+function FinalAction({
+  label,
+  icon,
+  color,
+  onClick,
+  disabled,
+  title,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  color: "green" | "red" | "muted";
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+}) {
   const hoverColors = {
     green: "hover:bg-emerald-500 hover:text-white border-emerald-500/30",
     red: "hover:bg-rose-500 hover:text-white border-rose-500/30",
@@ -203,10 +254,13 @@ function FinalAction({ label, icon, color, onClick }: { label: string, icon: Rea
 
   return (
     <button
+      type="button"
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       className={cn(
-        "flex flex-col items-center justify-center p-8 border transition-all gap-4 bg-white/5",
-        hoverColors[color]
+        "flex flex-col items-center justify-center p-8 border transition-all gap-4 bg-white/5 disabled:opacity-40 disabled:cursor-not-allowed",
+        !disabled && hoverColors[color]
       )}
     >
       <div className="w-10 h-10 border border-current flex items-center justify-center">

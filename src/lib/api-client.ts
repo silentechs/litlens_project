@@ -344,6 +344,7 @@ export interface ScreeningQueueItem {
   journal: string | null;
   year: number | null;
   doi: string | null;
+  url?: string | null;
 
   // AI assistance
   aiSuggestion?: string | null;
@@ -356,6 +357,34 @@ export interface ScreeningQueueItem {
   // Metadata
   importSource: string | null;
   createdAt: string;
+
+  // Full-text / ingestion status (for Evidence Chat)
+  pdfR2Key?: string | null;
+  pdfUploadedAt?: string | null;
+  pdfFileSize?: number | null;
+  pdfSource?: string | null;
+  ingestionStatus?: string | null;
+  ingestionError?: string | null;
+  chunksCreated?: number | null;
+  lastIngestedAt?: string | null;
+
+  // Dual screening status
+  reviewerStatus?: "FIRST_REVIEWER" | "SECOND_REVIEWER" | "AWAITING_OTHER" | "COMPLETED";
+  votedReviewers?: Array<{
+    id: string;
+    name: string | null;
+    image: string | null;
+    votedAt: string;
+  }>;
+  totalReviewersNeeded?: number;
+  reviewersVoted?: number;
+
+  // Tags
+  tags?: Array<{
+    id: string;
+    name: string;
+    color: string;
+  }>;
 }
 
 export type ScreeningPhase = "TITLE_ABSTRACT" | "FULL_TEXT" | "FINAL";

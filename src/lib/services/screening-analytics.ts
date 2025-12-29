@@ -1,673 +1,521 @@
-/**
- * Screening Analytics Service
- * Provides comprehensive statistics and insights for screening progress
- */
-
 import { db } from "@/lib/db";
-import { 
-  ProjectWorkStatus, 
-  ScreeningPhase, 
-  ScreeningDecision,
-  ConflictStatus 
-} from "@prisma/client";
+import { ScreeningPhase, ScreeningDecision } from "@prisma/client";
 
-// Types
-export interface ScreeningOverview {
-  project: {
-    id: string;
-    title: string;
-    totalStudies: number;
-    startDate: Date | null;
-    targetEndDate: Date | null;
-  };
-  currentPhase: ScreeningPhase;
-  progress: PhaseProgress[];
-  overall: {
-    completedStudies: number;
-    remainingStudies: number;
-    percentComplete: number;
-    estimatedDaysToComplete: number | null;
-  };
-}
+// ============== COHEN'S KAPPA CALCULATION ==============
 
-export interface PhaseProgress {
-  phase: ScreeningPhase;
-  total: number;
-  pending: number;
-  included: number;
-  excluded: number;
-  maybe: number;
-  conflicts: number;
-  percentComplete: number;
-}
-
-export interface ReviewerStats {
-  userId: string;
-  userName: string | null;
-  userImage: string | null;
-  decisionsCount: number;
-  avgTimePerDecision: number | null;
-  agreementRate: number | null;
-  includedRate: number;
-  excludedRate: number;
-  maybeRate: number;
-  dailyAverage: number;
-  lastActive: Date | null;
-}
-
-export interface TimelineEntry {
-  date: string;
-  screened: number;
-  included: number;
-  excluded: number;
-  maybe: number;
-  cumulative: number;
-}
-
-export interface AIPerformance {
-  totalPredictions: number;
-  correctPredictions: number;
-  accuracy: number;
-  byDecision: {
-    include: { predicted: number; correct: number; accuracy: number };
-    exclude: { predicted: number; correct: number; accuracy: number };
-    maybe: { predicted: number; correct: number; accuracy: number };
-  };
-  confidenceCorrelation: {
-    highConfidenceAccuracy: number;
-    lowConfidenceAccuracy: number;
-  };
-  timesSaved: number; // Studies where AI was followed without modification
-}
-
-export interface PRISMAFlow {
-  identification: {
-    databasesSearched: number;
-    recordsIdentified: number;
-    duplicatesRemoved: number;
-    recordsAfterDeduplication: number;
-  };
-  screening: {
-    titleAbstract: {
-      screened: number;
-      excluded: number;
-      reasons: Array<{ reason: string; count: number }>;
-    };
-    fullText: {
-      assessed: number;
-      excluded: number;
-      reasons: Array<{ reason: string; count: number }>;
-    };
-  };
-  included: {
-    qualitativeSynthesis: number;
-    quantitativeSynthesis: number;
-  };
+interface DecisionPair {
+  reviewer1: ScreeningDecision;
+  reviewer2: ScreeningDecision;
 }
 
 /**
- * Get screening overview for a project
+ * Calculate Cohen's Kappa for inter-rater reliability
+ * Kappa = (Po - Pe) / (1 - Pe)
+ * Po = Observed agreement
+ * Pe = Expected agreement by chance
  */
-export async function getScreeningOverview(projectId: string): Promise<ScreeningOverview> {
-  const project = await db.project.findUnique({
-    where: { id: projectId },
-    select: {
-      id: true,
-      title: true,
-      createdAt: true,
-    },
-  });
+export function calculateCohensKappa(pairs: DecisionPair[]): number {
+  if (pairs.length === 0) return 0;
 
-  if (!project) {
-    throw new Error("Project not found");
-  }
-
-  // Get counts by phase and status
-  const phaseStats = await db.projectWork.groupBy({
-    by: ["phase", "status"],
-    where: { projectId },
-    _count: true,
-  });
-
-  // Build progress by phase
-  const phases: ScreeningPhase[] = ["TITLE_ABSTRACT", "FULL_TEXT", "FINAL"];
-  const progress: PhaseProgress[] = phases.map((phase) => {
-    const phaseData = phaseStats.filter((s) => s.phase === phase);
-    const total = phaseData.reduce((sum, d) => sum + d._count, 0);
-    const pending = phaseData.find((d) => d.status === ProjectWorkStatus.PENDING)?._count || 0;
-    const included = phaseData.find((d) => d.status === ProjectWorkStatus.INCLUDED)?._count || 0;
-    const excluded = phaseData.find((d) => d.status === ProjectWorkStatus.EXCLUDED)?._count || 0;
-    const maybe = phaseData.find((d) => d.status === ProjectWorkStatus.MAYBE)?._count || 0;
-    const conflicts = phaseData.find((d) => d.status === ProjectWorkStatus.CONFLICT)?._count || 0;
-
-    return {
-      phase,
-      total,
-      pending,
-      included,
-      excluded,
-      maybe,
-      conflicts,
-      percentComplete: total > 0 ? ((total - pending - conflicts) / total) * 100 : 0,
-    };
-  });
-
-  // Determine current phase
-  let currentPhase: ScreeningPhase = "TITLE_ABSTRACT";
-  for (const p of progress) {
-    if (p.pending > 0 || p.conflicts > 0) {
-      currentPhase = p.phase;
-      break;
-    }
-    if (p.total > 0) {
-      currentPhase = p.phase;
-    }
-  }
-
-  // Calculate overall progress
-  const totalStudies = progress.reduce((sum, p) => sum + p.total, 0);
-  const completedStudies = progress.reduce((sum, p) => sum + p.included + p.excluded + p.maybe, 0);
-  const remainingStudies = progress.reduce((sum, p) => sum + p.pending + p.conflicts, 0);
-
-  // Estimate days to complete based on recent velocity
-  const estimatedDays = await estimateDaysToComplete(projectId, remainingStudies);
-
-  return {
-    project: {
-      id: project.id,
-      title: project.title,
-      totalStudies,
-      startDate: project.createdAt,
-      targetEndDate: null, // Would come from project settings
-    },
-    currentPhase,
-    progress,
-    overall: {
-      completedStudies,
-      remainingStudies,
-      percentComplete: totalStudies > 0 ? (completedStudies / totalStudies) * 100 : 0,
-      estimatedDaysToComplete: estimatedDays,
-    },
-  };
-}
-
-/**
- * Get detailed reviewer statistics
- */
-export async function getReviewerStats(projectId: string): Promise<ReviewerStats[]> {
-  // Get all reviewers who have made decisions
-  const reviewers = await db.screeningDecisionRecord.groupBy({
-    by: ["reviewerId"],
-    where: {
-      projectWork: { projectId },
-    },
-    _count: true,
-    _avg: {
-      timeSpentMs: true,
-    },
-  });
-
-  const stats = await Promise.all(
-    reviewers.map(async (reviewer) => {
-      // Get user info
-      const user = await db.user.findUnique({
-        where: { id: reviewer.reviewerId },
-        select: { name: true, image: true },
-      });
-
-      // Get decision breakdown
-      const decisions = await db.screeningDecisionRecord.groupBy({
-        by: ["decision"],
-        where: {
-          reviewerId: reviewer.reviewerId,
-          projectWork: { projectId },
-        },
-        _count: true,
-      });
-
-      const total = decisions.reduce((sum, d) => sum + d._count, 0);
-      const included = decisions.find((d) => d.decision === ScreeningDecision.INCLUDE)?._count || 0;
-      const excluded = decisions.find((d) => d.decision === ScreeningDecision.EXCLUDE)?._count || 0;
-      const maybe = decisions.find((d) => d.decision === ScreeningDecision.MAYBE)?._count || 0;
-
-      // Calculate agreement rate (% of decisions that matched final outcome)
-      const agreementData = await db.screeningDecisionRecord.findMany({
-        where: {
-          reviewerId: reviewer.reviewerId,
-          projectWork: {
-            projectId,
-            finalDecision: { not: null },
-          },
-        },
-        include: {
-          projectWork: {
-            select: { finalDecision: true },
-          },
-        },
-      });
-
-      const agreedCount = agreementData.filter(
-        (d) => d.decision === d.projectWork.finalDecision
-      ).length;
-      const agreementRate = agreementData.length > 0 
-        ? (agreedCount / agreementData.length) * 100 
-        : null;
-
-      // Get last activity
-      const lastDecision = await db.screeningDecisionRecord.findFirst({
-        where: {
-          reviewerId: reviewer.reviewerId,
-          projectWork: { projectId },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
-      });
-
-      // Calculate daily average (last 7 days)
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
-      const recentDecisions = await db.screeningDecisionRecord.count({
-        where: {
-          reviewerId: reviewer.reviewerId,
-          projectWork: { projectId },
-          createdAt: { gte: sevenDaysAgo },
-        },
-      });
-
-      return {
-        userId: reviewer.reviewerId,
-        userName: user?.name || null,
-        userImage: user?.image || null,
-        decisionsCount: reviewer._count,
-        avgTimePerDecision: reviewer._avg.timeSpentMs,
-        agreementRate,
-        includedRate: total > 0 ? (included / total) * 100 : 0,
-        excludedRate: total > 0 ? (excluded / total) * 100 : 0,
-        maybeRate: total > 0 ? (maybe / total) * 100 : 0,
-        dailyAverage: recentDecisions / 7,
-        lastActive: lastDecision?.createdAt || null,
-      };
-    })
-  );
-
-  return stats.sort((a, b) => b.decisionsCount - a.decisionsCount);
-}
-
-/**
- * Get screening timeline data
- */
-export async function getScreeningTimeline(
-  projectId: string,
-  days: number = 30
-): Promise<TimelineEntry[]> {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-  startDate.setHours(0, 0, 0, 0);
-
-  // Get all decisions in the date range
-  const decisions = await db.screeningDecisionRecord.findMany({
-    where: {
-      projectWork: { projectId },
-      createdAt: { gte: startDate },
-    },
-    select: {
-      createdAt: true,
-      decision: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  // Group by date
-  const dailyData = new Map<string, { screened: number; included: number; excluded: number; maybe: number }>();
+  const n = pairs.length;
   
-  // Initialize all days
-  for (let d = new Date(startDate); d <= new Date(); d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().split("T")[0];
-    dailyData.set(dateStr, { screened: 0, included: 0, excluded: 0, maybe: 0 });
-  }
-
-  // Populate with actual data
-  decisions.forEach((d) => {
-    const dateStr = d.createdAt.toISOString().split("T")[0];
-    const data = dailyData.get(dateStr);
-    if (data) {
-      data.screened++;
-      if (d.decision === ScreeningDecision.INCLUDE) data.included++;
-      else if (d.decision === ScreeningDecision.EXCLUDE) data.excluded++;
-      else data.maybe++;
+  // Calculate observed agreement (Po)
+  let agreements = 0;
+  for (const pair of pairs) {
+    if (pair.reviewer1 === pair.reviewer2) {
+      agreements++;
     }
-  });
+  }
+  const po = agreements / n;
 
-  // Build timeline with cumulative totals
-  const timeline: TimelineEntry[] = [];
-  let cumulative = 0;
+  // Calculate expected agreement by chance (Pe)
+  const decisions: ScreeningDecision[] = ["INCLUDE", "EXCLUDE", "MAYBE"];
+  const r1Counts: Record<string, number> = {};
+  const r2Counts: Record<string, number> = {};
 
-  for (const [date, data] of dailyData) {
-    cumulative += data.screened;
-    timeline.push({
-      date,
-      ...data,
-      cumulative,
-    });
+  // Count decisions for each reviewer
+  for (const decision of decisions) {
+    r1Counts[decision] = pairs.filter(p => p.reviewer1 === decision).length;
+    r2Counts[decision] = pairs.filter(p => p.reviewer2 === decision).length;
   }
 
-  return timeline;
+  // Calculate expected agreement
+  let pe = 0;
+  for (const decision of decisions) {
+    const p1 = r1Counts[decision] / n;
+    const p2 = r2Counts[decision] / n;
+    pe += p1 * p2;
+  }
+
+  // Calculate Kappa
+  if (pe === 1) return 1; // Perfect agreement by chance
+  
+  const kappa = (po - pe) / (1 - pe);
+  return Math.round(kappa * 1000) / 1000; // Round to 3 decimal places
 }
 
 /**
- * Get AI performance metrics
+ * Interpret Kappa score
  */
-export async function getAIPerformance(projectId: string): Promise<AIPerformance> {
-  // Get studies with AI predictions and final decisions
-  const studies = await db.projectWork.findMany({
+export function interpretKappa(kappa: number): {
+  level: "Poor" | "Slight" | "Fair" | "Moderate" | "Substantial" | "Almost Perfect";
+  color: string;
+  recommendation: string;
+} {
+  if (kappa < 0) {
+    return {
+      level: "Poor",
+      color: "#EF4444",
+      recommendation: "Agreement is worse than chance. Review eligibility criteria and consider retraining reviewers.",
+    };
+  } else if (kappa < 0.2) {
+    return {
+      level: "Slight",
+      color: "#F97316",
+      recommendation: "Very low agreement. Conduct calibration round and clarify eligibility criteria.",
+    };
+  } else if (kappa < 0.4) {
+    return {
+      level: "Fair",
+      color: "#F59E0B",
+      recommendation: "Below acceptable threshold. Consider calibration and team discussion.",
+    };
+  } else if (kappa < 0.6) {
+    return {
+      level: "Moderate",
+      color: "#EAB308",
+      recommendation: "Acceptable for exploratory work. Consider improving for publication.",
+    };
+  } else if (kappa < 0.8) {
+    return {
+      level: "Substantial",
+      color: "#84CC16",
+      recommendation: "Good agreement. Suitable for most systematic reviews.",
+    };
+  } else {
+    return {
+      level: "Almost Perfect",
+      color: "#10B981",
+      recommendation: "Excellent agreement. Meets highest standards for systematic reviews.",
+    };
+  }
+}
+
+// ============== SCREENING ANALYTICS ==============
+
+interface ScreeningAnalyticsParams {
+  projectId: string;
+  phase?: ScreeningPhase;
+  include?: string[]; // What to calculate: kappa, irr, velocity, performance
+}
+
+export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
+  const { projectId, phase, include = ["all"] } = params;
+  const shouldInclude = (metric: string) => 
+    include.includes("all") || include.includes(metric);
+
+  const analytics: any = {
+    projectId,
+    phase: phase || "all",
+    generatedAt: new Date().toISOString(),
+  };
+
+  // Get all project works for this phase
+  const whereClause: any = { projectId };
+  if (phase) {
+    whereClause.phase = phase;
+  }
+
+  const projectWorks = await db.projectWork.findMany({
+    where: whereClause,
+    include: {
+      decisions: {
+        include: {
+          reviewer: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // ============== KAPPA CALCULATION ==============
+  if (shouldInclude("kappa")) {
+    // Find all studies with exactly 2 decisions (dual screening)
+    const dualScreenedStudies = projectWorks.filter(
+      pw => pw.decisions.length === 2
+    );
+
+    if (dualScreenedStudies.length > 0) {
+      const pairs: DecisionPair[] = dualScreenedStudies.map(pw => ({
+        reviewer1: pw.decisions[0].decision as ScreeningDecision,
+        reviewer2: pw.decisions[1].decision as ScreeningDecision,
+      }));
+
+      const kappa = calculateCohensKappa(pairs);
+      const interpretation = interpretKappa(kappa);
+
+      analytics.kappa = {
+        score: kappa,
+        interpretation: interpretation.level,
+        color: interpretation.color,
+        recommendation: interpretation.recommendation,
+        studiesAnalyzed: dualScreenedStudies.length,
+      };
+    } else {
+      analytics.kappa = {
+        score: null,
+        interpretation: "Insufficient Data",
+        color: "#9CA3AF",
+        recommendation: "Need at least one study with two independent reviews.",
+        studiesAnalyzed: 0,
+      };
+    }
+  }
+
+  // ============== AGREEMENT RATES ==============
+  if (shouldInclude("agreement")) {
+    const dualScreenedStudies = projectWorks.filter(
+      pw => pw.decisions.length >= 2
+    );
+
+    if (dualScreenedStudies.length > 0) {
+      const agreements = dualScreenedStudies.filter(pw => 
+        pw.decisions[0].decision === pw.decisions[1].decision
+      ).length;
+
+      const disagreements = dualScreenedStudies.length - agreements;
+
+      analytics.agreement = {
+        agreementRate: Math.round((agreements / dualScreenedStudies.length) * 100),
+        agreements,
+        disagreements,
+        total: dualScreenedStudies.length,
+      };
+    } else {
+      analytics.agreement = {
+        agreementRate: null,
+        agreements: 0,
+        disagreements: 0,
+        total: 0,
+      };
+    }
+  }
+
+  // ============== CONFLICT RATE ==============
+  if (shouldInclude("conflicts")) {
+    const conflicts = await db.conflict.count({
+      where: {
+        projectId,
+        ...(phase && { phase }),
+      },
+    });
+
+    const resolved = await db.conflict.count({
+      where: {
+        projectId,
+        ...(phase && { phase }),
+        status: "RESOLVED",
+      },
+    });
+
+    analytics.conflicts = {
+      total: conflicts,
+      resolved,
+      pending: conflicts - resolved,
+      resolutionRate: conflicts > 0 ? Math.round((resolved / conflicts) * 100) : 100,
+    };
+  }
+
+  // ============== REVIEWER PERFORMANCE ==============
+  if (shouldInclude("performance")) {
+    // Get all reviewers
+    const reviewers = await db.projectMember.findMany({
+      where: { projectId },
+      include: { user: true },
+    });
+
+    const performance = await Promise.all(
+      reviewers.map(async (reviewer) => {
+        const decisions = await db.screeningDecisionRecord.findMany({
+          where: {
+            reviewerId: reviewer.userId,
+            projectWork: { projectId },
+            ...(phase && { phase }),
+          },
+        });
+
+        const avgTime = decisions.length > 0
+          ? decisions.reduce((sum, d) => sum + (d.timeSpentMs || 0), 0) / decisions.length
+          : 0;
+
+        const avgConfidence = decisions.length > 0
+          ? decisions.reduce((sum, d) => sum + (d.confidence || 80), 0) / decisions.length
+          : 0;
+
+        // Calculate agreement with final decision
+        const studiesWithFinal = await db.projectWork.findMany({
+          where: {
+            projectId,
+            ...(phase && { phase }),
+            finalDecision: { not: null },
+            decisions: {
+              some: { reviewerId: reviewer.userId },
+            },
+          },
+          include: {
+            decisions: {
+              where: { reviewerId: reviewer.userId },
+            },
+          },
+        });
+
+        const agreementsWithFinal = studiesWithFinal.filter(pw => 
+          pw.decisions[0]?.decision === pw.finalDecision
+        ).length;
+
+        const agreementWithConsensus = studiesWithFinal.length > 0
+          ? Math.round((agreementsWithFinal / studiesWithFinal.length) * 100)
+          : null;
+
+        return {
+          reviewerId: reviewer.userId,
+          name: reviewer.user.name || "Unknown",
+          image: reviewer.user.image,
+          role: reviewer.role,
+          studiesReviewed: decisions.length,
+          avgTimePerStudy: Math.round(avgTime / 1000), // Convert to seconds
+          avgConfidence: Math.round(avgConfidence),
+          agreementWithConsensus,
+        };
+      })
+    );
+
+    analytics.performance = performance.filter(p => p.studiesReviewed > 0);
+  }
+
+  // ============== SCREENING VELOCITY ==============
+  if (shouldInclude("velocity")) {
+    // Get decisions grouped by date
+    const decisions = await db.screeningDecisionRecord.findMany({
+      where: {
+        projectWork: { projectId },
+        ...(phase && { phase }),
+      },
+      select: {
+        createdAt: true,
+        timeSpentMs: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Group by day
+    const velocityByDay: Record<string, { count: number; totalTime: number }> = {};
+    
+    for (const decision of decisions) {
+      const date = decision.createdAt.toISOString().split("T")[0];
+      if (!velocityByDay[date]) {
+        velocityByDay[date] = { count: 0, totalTime: 0 };
+      }
+      velocityByDay[date].count++;
+      velocityByDay[date].totalTime += decision.timeSpentMs || 0;
+    }
+
+    const velocity = Object.entries(velocityByDay).map(([date, data]) => ({
+      date,
+      studiesScreened: data.count,
+      avgTimePerStudy: data.count > 0 ? Math.round(data.totalTime / data.count / 1000) : 0,
+    }));
+
+    analytics.velocity = velocity;
+  }
+
+  // ============== PHASE STATISTICS ==============
+  if (shouldInclude("stats")) {
+    const stats = {
+      total: projectWorks.length,
+      pending: projectWorks.filter(pw => pw.status === "PENDING" || pw.status === "SCREENING").length,
+      included: projectWorks.filter(pw => pw.finalDecision === "INCLUDE").length,
+      excluded: projectWorks.filter(pw => pw.finalDecision === "EXCLUDE").length,
+      maybe: projectWorks.filter(pw => pw.finalDecision === "MAYBE").length,
+      conflicts: projectWorks.filter(pw => pw.status === "CONFLICT").length,
+    };
+
+    analytics.stats = stats;
+  }
+
+  return analytics;
+}
+
+// ============== PRISMA FLOW DATA ==============
+
+export async function getPRISMAFlowData(projectId: string) {
+  // Get counts for each stage
+  const identification = await db.projectWork.count({
+    where: { projectId },
+  });
+
+  const duplicates = await db.projectWork.count({
+    where: { projectId, isDuplicate: true },
+  });
+
+  const afterDeduplication = identification - duplicates;
+
+  const titleAbstractScreened = await db.projectWork.count({
     where: {
       projectId,
-      aiSuggestion: { not: null },
-      finalDecision: { not: null },
+      phase: { in: ["FULL_TEXT", "FINAL"] },
     },
-    select: {
-      aiSuggestion: true,
-      aiConfidence: true,
-      finalDecision: true,
-    },
-  });
-
-  const totalPredictions = studies.length;
-  let correctPredictions = 0;
-  let timesSaved = 0;
-
-  const byDecision = {
-    include: { predicted: 0, correct: 0, accuracy: 0 },
-    exclude: { predicted: 0, correct: 0, accuracy: 0 },
-    maybe: { predicted: 0, correct: 0, accuracy: 0 },
-  };
-
-  let highConfidenceCorrect = 0;
-  let highConfidenceTotal = 0;
-  let lowConfidenceCorrect = 0;
-  let lowConfidenceTotal = 0;
-
-  studies.forEach((s) => {
-    const isCorrect = s.aiSuggestion === s.finalDecision;
-    if (isCorrect) correctPredictions++;
-
-    // By decision type
-    const decisionKey = s.aiSuggestion?.toLowerCase() as keyof typeof byDecision;
-    if (decisionKey && byDecision[decisionKey]) {
-      byDecision[decisionKey].predicted++;
-      if (isCorrect) byDecision[decisionKey].correct++;
-    }
-
-    // By confidence level
-    if (s.aiConfidence !== null) {
-      if (s.aiConfidence >= 0.7) {
-        highConfidenceTotal++;
-        if (isCorrect) highConfidenceCorrect++;
-      } else {
-        lowConfidenceTotal++;
-        if (isCorrect) lowConfidenceCorrect++;
-      }
-    }
-  });
-
-  // Calculate studies where AI was followed
-  const followedStudies = await db.screeningDecisionRecord.count({
-    where: {
-      projectWork: { projectId },
-      followedAi: true,
-    },
-  });
-  timesSaved = followedStudies;
-
-  // Calculate accuracies
-  Object.keys(byDecision).forEach((key) => {
-    const d = byDecision[key as keyof typeof byDecision];
-    d.accuracy = d.predicted > 0 ? (d.correct / d.predicted) * 100 : 0;
-  });
-
-  return {
-    totalPredictions,
-    correctPredictions,
-    accuracy: totalPredictions > 0 ? (correctPredictions / totalPredictions) * 100 : 0,
-    byDecision,
-    confidenceCorrelation: {
-      highConfidenceAccuracy: highConfidenceTotal > 0 
-        ? (highConfidenceCorrect / highConfidenceTotal) * 100 
-        : 0,
-      lowConfidenceAccuracy: lowConfidenceTotal > 0 
-        ? (lowConfidenceCorrect / lowConfidenceTotal) * 100 
-        : 0,
-    },
-    timesSaved,
-  };
-}
-
-/**
- * Generate PRISMA flow diagram data
- */
-export async function getPRISMAFlow(projectId: string): Promise<PRISMAFlow> {
-  // Get import batches for identification section
-  const importBatches = await db.importBatch.findMany({
-    where: { projectId },
-    select: {
-      totalRecords: true,
-      duplicatesFound: true,
-    },
-  });
-
-  const recordsIdentified = importBatches.reduce((sum, b) => sum + (b.totalRecords || 0), 0);
-  const duplicatesRemoved = importBatches.reduce((sum, b) => sum + (b.duplicatesFound || 0), 0);
-
-  // Get screening stats
-  const titleAbstractScreened = await db.projectWork.count({
-    where: { projectId, phase: ScreeningPhase.TITLE_ABSTRACT },
   });
 
   const titleAbstractExcluded = await db.projectWork.count({
-    where: { 
-      projectId, 
-      phase: ScreeningPhase.TITLE_ABSTRACT,
-      status: ProjectWorkStatus.EXCLUDED,
-    },
-  });
-
-  // Get exclusion reasons for title/abstract
-  const taExclusionReasons = await db.screeningDecisionRecord.groupBy({
-    by: ["exclusionReason"],
     where: {
-      projectWork: { 
-        projectId, 
-        phase: ScreeningPhase.TITLE_ABSTRACT 
-      },
-      decision: ScreeningDecision.EXCLUDE,
-      exclusionReason: { not: null },
+      projectId,
+      phase: "TITLE_ABSTRACT",
+      finalDecision: "EXCLUDE",
     },
-    _count: true,
   });
 
-  // Full text screening
-  const fullTextAssessed = await db.projectWork.count({
-    where: { projectId, phase: ScreeningPhase.FULL_TEXT },
+  const fullTextScreened = await db.projectWork.count({
+    where: {
+      projectId,
+      phase: "FULL_TEXT",
+    },
   });
 
   const fullTextExcluded = await db.projectWork.count({
-    where: { 
-      projectId, 
-      phase: ScreeningPhase.FULL_TEXT,
-      status: ProjectWorkStatus.EXCLUDED,
+    where: {
+      projectId,
+      phase: "FULL_TEXT",
+      finalDecision: "EXCLUDE",
     },
   });
 
-  const ftExclusionReasons = await db.screeningDecisionRecord.groupBy({
-    by: ["exclusionReason"],
+  // Get exclusion reasons
+  const exclusionReasons = await db.screeningDecisionRecord.findMany({
     where: {
-      projectWork: { 
-        projectId, 
-        phase: ScreeningPhase.FULL_TEXT 
-      },
-      decision: ScreeningDecision.EXCLUDE,
+      projectWork: { projectId },
+      decision: "EXCLUDE",
       exclusionReason: { not: null },
     },
-    _count: true,
+    select: {
+      exclusionReason: true,
+    },
   });
 
-  // Final included
-  const includedStudies = await db.projectWork.count({
-    where: { 
-      projectId, 
-      status: ProjectWorkStatus.INCLUDED,
+  const reasonCounts: Record<string, number> = {};
+  for (const record of exclusionReasons) {
+    if (record.exclusionReason) {
+      reasonCounts[record.exclusionReason] = (reasonCounts[record.exclusionReason] || 0) + 1;
+    }
+  }
+
+  const included = await db.projectWork.count({
+    where: {
+      projectId,
+      finalDecision: "INCLUDE",
     },
   });
 
   return {
     identification: {
-      databasesSearched: importBatches.length,
-      recordsIdentified,
-      duplicatesRemoved,
-      recordsAfterDeduplication: recordsIdentified - duplicatesRemoved,
+      total: identification,
+      duplicates,
+      afterDeduplication,
     },
     screening: {
       titleAbstract: {
-        screened: titleAbstractScreened,
+        screened: afterDeduplication,
         excluded: titleAbstractExcluded,
-        reasons: taExclusionReasons.map((r) => ({
-          reason: r.exclusionReason || "No reason specified",
-          count: r._count,
-        })),
+        remaining: titleAbstractScreened,
       },
       fullText: {
-        assessed: fullTextAssessed,
+        screened: fullTextScreened,
         excluded: fullTextExcluded,
-        reasons: ftExclusionReasons.map((r) => ({
-          reason: r.exclusionReason || "No reason specified",
-          count: r._count,
-        })),
+        remaining: fullTextScreened - fullTextExcluded,
       },
     },
-    included: {
-      qualitativeSynthesis: includedStudies,
-      quantitativeSynthesis: 0, // Would need additional data extraction status
-    },
+    exclusionReasons: Object.entries(reasonCounts)
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count),
+    included,
   };
+}
+
+// ============== UTILITY FUNCTIONS ==============
+
+/**
+ * Get all decision pairs for Kappa calculation
+ */
+export async function getDecisionPairs(
+  projectId: string,
+  phase?: ScreeningPhase
+): Promise<DecisionPair[]> {
+  const whereClause: any = { projectId };
+  if (phase) {
+    whereClause.phase = phase;
+  }
+
+  const projectWorks = await db.projectWork.findMany({
+    where: whereClause,
+    include: {
+      decisions: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  // Filter to only dual-screened studies
+  const dualScreened = projectWorks.filter(pw => pw.decisions.length === 2);
+
+  return dualScreened.map(pw => ({
+    reviewer1: pw.decisions[0].decision as ScreeningDecision,
+    reviewer2: pw.decisions[1].decision as ScreeningDecision,
+  }));
 }
 
 /**
- * Get inter-rater reliability (Cohen's Kappa)
+ * Calculate percentage agreement
  */
-export async function getInterRaterReliability(
-  projectId: string,
-  phase: ScreeningPhase = "TITLE_ABSTRACT"
-): Promise<{
-  kappa: number;
-  interpretation: string;
-  agreementPercentage: number;
-  sampleSize: number;
-}> {
-  // Get studies with dual screening
-  const dualScreenedStudies = await db.projectWork.findMany({
-    where: {
-      projectId,
-      phase,
-      decisions: {
-        // Has at least 2 decisions
-      },
-    },
-    include: {
-      decisions: {
-        where: { phase },
-        select: {
-          reviewerId: true,
-          decision: true,
-        },
-      },
-    },
-  });
-
-  // Filter to only those with exactly 2 decisions
-  const pairs = dualScreenedStudies.filter((s) => s.decisions.length >= 2);
+export function calculateAgreementRate(pairs: DecisionPair[]): number {
+  if (pairs.length === 0) return 0;
   
-  if (pairs.length < 5) {
-    return {
-      kappa: 0,
-      interpretation: "Insufficient data",
-      agreementPercentage: 0,
-      sampleSize: pairs.length,
-    };
+  const agreements = pairs.filter(p => p.reviewer1 === p.reviewer2).length;
+  return Math.round((agreements / pairs.length) * 100);
+}
+
+/**
+ * Get confusion matrix for decision patterns
+ */
+export function getConfusionMatrix(pairs: DecisionPair[]): {
+  matrix: Record<string, Record<string, number>>;
+  summary: { decision: string; count: number }[];
+} {
+  const decisions: ScreeningDecision[] = ["INCLUDE", "EXCLUDE", "MAYBE"];
+  const matrix: Record<string, Record<string, number>> = {};
+
+  // Initialize matrix
+  for (const d1 of decisions) {
+    matrix[d1] = {};
+    for (const d2 of decisions) {
+      matrix[d1][d2] = 0;
+    }
   }
 
-  // Calculate agreement
-  let agreements = 0;
-  const decisionCounts = {
-    include: { r1: 0, r2: 0 },
-    exclude: { r1: 0, r2: 0 },
-    maybe: { r1: 0, r2: 0 },
-  };
+  // Fill matrix
+  for (const pair of pairs) {
+    matrix[pair.reviewer1][pair.reviewer2]++;
+  }
 
-  pairs.forEach((p) => {
-    const [d1, d2] = p.decisions;
-    if (d1.decision === d2.decision) agreements++;
+  // Calculate summary
+  const summary = decisions.map(decision => ({
+    decision,
+    count: Object.values(matrix[decision]).reduce((sum, val) => sum + val, 0),
+  }));
 
-    // Track marginal totals for Kappa calculation
-    const d1Key = d1.decision.toLowerCase() as keyof typeof decisionCounts;
-    const d2Key = d2.decision.toLowerCase() as keyof typeof decisionCounts;
-    if (decisionCounts[d1Key]) decisionCounts[d1Key].r1++;
-    if (decisionCounts[d2Key]) decisionCounts[d2Key].r2++;
-  });
-
-  const n = pairs.length;
-  const observedAgreement = agreements / n;
-
-  // Calculate expected agreement
-  const expectedAgreement = Object.values(decisionCounts).reduce((sum, counts) => {
-    return sum + (counts.r1 / n) * (counts.r2 / n);
-  }, 0);
-
-  // Cohen's Kappa
-  const kappa = expectedAgreement === 1 
-    ? 1 
-    : (observedAgreement - expectedAgreement) / (1 - expectedAgreement);
-
-  // Interpretation
-  let interpretation: string;
-  if (kappa < 0) interpretation = "Poor";
-  else if (kappa < 0.2) interpretation = "Slight";
-  else if (kappa < 0.4) interpretation = "Fair";
-  else if (kappa < 0.6) interpretation = "Moderate";
-  else if (kappa < 0.8) interpretation = "Substantial";
-  else interpretation = "Almost Perfect";
-
-  return {
-    kappa: Math.round(kappa * 100) / 100,
-    interpretation,
-    agreementPercentage: Math.round(observedAgreement * 100),
-    sampleSize: n,
-  };
+  return { matrix, summary };
 }
-
-// ============== HELPERS ==============
-
-async function estimateDaysToComplete(
-  projectId: string,
-  remaining: number
-): Promise<number | null> {
-  if (remaining === 0) return 0;
-
-  // Get average daily completions over last 7 days
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  const recentDecisions = await db.screeningDecisionRecord.count({
-    where: {
-      projectWork: { projectId },
-      createdAt: { gte: sevenDaysAgo },
-    },
-  });
-
-  const dailyAverage = recentDecisions / 7;
-  
-  if (dailyAverage === 0) return null;
-
-  return Math.ceil(remaining / dailyAverage);
-}
-

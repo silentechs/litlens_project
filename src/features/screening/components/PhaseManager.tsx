@@ -66,7 +66,7 @@ export function PhaseManager({ projectId }: PhaseManagerProps) {
                 </div>
                 <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${nextSteps.remainingReviewers === 0 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                    {nextSteps.remainingReviewers} Team Pending
+                    {nextSteps.remainingReviewers} Studies Awaiting Review
                 </div>
             </div>
 
@@ -90,7 +90,7 @@ export function PhaseManager({ projectId }: PhaseManagerProps) {
                         )}
                         {nextSteps.remainingReviewers > 0 && (
                             <li className="flex items-center gap-2">
-                                <X className="w-3 h-3" /> Wait for {nextSteps.remainingReviewers} other reviewers
+                                <X className="w-3 h-3" /> {nextSteps.remainingReviewers} studies still need additional reviews
                             </li>
                         )}
                         {nextSteps.conflicts > 0 && (

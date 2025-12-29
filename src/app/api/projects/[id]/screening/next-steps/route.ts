@@ -75,47 +75,41 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             where: { projectId, phase: currentPhase }
         });
 
-        // This is rough approximation because duplicate decisions exist (2 reviewers)
-        // Better to count Works that have reached consensus or single decision
-        // For now, let's stick to confirmed conflicts
+        // 3. Project config (reviewers needed)
+        const project = await db.project.findUnique({
+            where: { id: projectId },
+            select: { requireDualScreening: true }
+        });
 
+        const reviewersNeeded = project?.requireDualScreening ? 2 : 1;
+
+        // 4. Unresolved conflicts for this phase (team-level blocker)
         const conflictsCount = await db.conflict.count({
             where: {
                 projectId,
-                status: { in: ["PENDING", "IN_DISCUSSION"] } // Handle DB schema variations
+                phase: currentPhase,
+                status: { in: ["PENDING", "IN_DISCUSSION"] }
             }
         });
 
-        // 3. Check other reviewers' progress
-        // Find members who have NOT completed screening
-        const members = await db.projectMember.findMany({
-            where: { projectId },
-            select: { userId: true }
-        });
+        // 5. Team-level completion: how many studies have the required number of decisions for this phase?
+        // Use raw SQL for a single, scalable query (avoids N*M per-member loops).
+        const requiredDecisionsRows = await db.$queryRaw<Array<{ count: bigint }>>`
+            SELECT COUNT(*) as count
+            FROM (
+                SELECT sdr."projectWorkId"
+                FROM "ScreeningDecisionRecord" sdr
+                JOIN "ProjectWork" pw ON pw."id" = sdr."projectWorkId"
+                WHERE pw."projectId" = ${projectId}
+                  AND pw."phase" = ${currentPhase}::"ScreeningPhase"
+                  AND sdr."phase" = ${currentPhase}::"ScreeningPhase"
+                GROUP BY sdr."projectWorkId"
+                HAVING COUNT(*) >= ${reviewersNeeded}
+            ) t;
+        `;
 
-        let remainingReviewers = 0;
-
-        // This could be slow for huge teams, but fine for typical 2-10 person teams
-        for (const member of members) {
-            if (member.userId === session.user.id) continue;
-
-            const pendingForMember = await db.projectWork.count({
-                where: {
-                    projectId,
-                    phase: currentPhase,
-                    decisions: {
-                        none: {
-                            reviewerId: member.userId,
-                            phase: currentPhase
-                        }
-                    }
-                }
-            });
-
-            if (pendingForMember > 0) {
-                remainingReviewers++;
-            }
-        }
+        const studiesWithRequiredDecisions = Number(requiredDecisionsRows?.[0]?.count ?? 0);
+        const studiesAwaitingMoreReviews = Math.max(0, totalWorks - studiesWithRequiredDecisions);
 
         // 4. Can move to next phase?
         // Rules: 
@@ -126,11 +120,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         // Simplify: Can move if > 95% of 'screenable' works are done AND conflicts == 0
         // "Screenable" excludes those that might be stuck/ignored
 
-        const isPhaseComplete = remainingReviewers === 0 && conflictsCount === 0 && totalWorks > 0;
+        const isPhaseComplete = studiesAwaitingMoreReviews === 0 && conflictsCount === 0 && totalWorks > 0;
 
         let nextPhase: ScreeningPhase | undefined;
         if (currentPhase === "TITLE_ABSTRACT") nextPhase = "FULL_TEXT";
-        // Add other transitions later
+        else if (currentPhase === "FULL_TEXT") nextPhase = "FINAL";
 
         // Calculate actual phase stats from ProjectWork status
         const phaseStatsMap: Record<string, number> = {};
@@ -142,7 +136,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             completed: userPendingCount === 0,
             totalPending: userPendingCount,
             conflicts: conflictsCount,
-            remainingReviewers,
+            // NOTE: This field is consumed by UI; we repurpose it to the real blocker:
+            // how many studies still need more reviews for the team to finish this phase.
+            remainingReviewers: studiesAwaitingMoreReviews,
             phaseStats: {
                 total: totalWorks,
                 included: phaseStatsMap['INCLUDED'] || 0,

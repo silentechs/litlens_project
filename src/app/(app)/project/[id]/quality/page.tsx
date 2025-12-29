@@ -1,6 +1,13 @@
 import { QualityAssessment } from "@/features/quality/components/QualityAssessment";
 
-export default function QualityPage() {
-  return <QualityAssessment />;
+interface PageProps {
+  params: Promise<{
+    id: string;
+  }>;
+}
+
+export default async function QualityPage(props: PageProps) {
+  const params = await props.params;
+  return <QualityAssessment projectId={params.id} />;
 }
 

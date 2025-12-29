@@ -5,6 +5,7 @@ import { Send, Reply, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useChatMessages, useSendChatMessageOptimistic } from "@/features/collaboration/api/queries";
 
 interface ChatMessage {
     id: string;
@@ -26,12 +27,16 @@ interface ProjectChatProps {
  * Real-time project chat component
  */
 export function ProjectChat({ projectId, currentUser, className }: ProjectChatProps) {
-    const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState("");
     const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    // Fetch messages
+    const { data: messages = [], isLoading } = useChatMessages(projectId);
+    
+    // Send message mutation
+    const sendMessage = useSendChatMessageOptimistic(projectId, currentUser);
 
     // Scroll to bottom when new messages arrive
     const scrollToBottom = useCallback(() => {
@@ -42,69 +47,22 @@ export function ProjectChat({ projectId, currentUser, className }: ProjectChatPr
         scrollToBottom();
     }, [messages, scrollToBottom]);
 
-    // Load initial messages
-    useEffect(() => {
-        async function loadMessages() {
-            try {
-                const res = await fetch(`/api/projects/${projectId}/chat`);
-                if (res.ok) {
-                    const data = await res.json();
-                    setMessages(data.data || []);
-                }
-            } catch (error) {
-                console.error("Failed to load chat messages:", error);
-            }
-        }
-        loadMessages();
-    }, [projectId]);
-
-    // Listen for new messages via SSE
-    useEffect(() => {
-        const eventSource = new EventSource(`/api/events?projectId=${projectId}`);
-
-        eventSource.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                if (message.type === "chat:message") {
-                    setMessages(prev => [...prev, {
-                        id: message.data.id,
-                        userId: message.data.userId,
-                        userName: message.data.userName,
-                        content: message.data.content,
-                        createdAt: new Date(),
-                        replyToId: message.data.replyToId,
-                    }]);
-                }
-            } catch {
-                // Ignore parse errors
-            }
-        };
-
-        return () => eventSource.close();
-    }, [projectId]);
-
     const handleSend = async () => {
-        if (!input.trim() || isLoading) return;
+        if (!input.trim() || sendMessage.isPending) return;
 
-        setIsLoading(true);
         const content = input.trim();
         setInput("");
         setReplyTo(null);
 
         try {
-            await fetch(`/api/projects/${projectId}/chat`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    content,
-                    replyToId: replyTo?.id,
-                }),
+            await sendMessage.mutateAsync({
+                content,
+                replyToId: replyTo?.id,
             });
         } catch (error) {
             console.error("Failed to send message:", error);
             setInput(content); // Restore on error
         } finally {
-            setIsLoading(false);
             inputRef.current?.focus();
         }
     };
@@ -125,7 +83,11 @@ export function ProjectChat({ projectId, currentUser, className }: ProjectChatPr
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.length === 0 ? (
+                {isLoading ? (
+                    <div className="text-center text-muted font-serif italic py-8">
+                        Loading messages...
+                    </div>
+                ) : messages.length === 0 ? (
                     <div className="text-center text-muted font-serif italic py-8">
                         No messages yet. Start the conversation!
                     </div>
@@ -175,7 +137,7 @@ export function ProjectChat({ projectId, currentUser, className }: ProjectChatPr
                     />
                     <Button
                         onClick={handleSend}
-                        disabled={!input.trim() || isLoading}
+                        disabled={!input.trim() || sendMessage.isPending}
                         className="flex-shrink-0"
                     >
                         <Send className="w-4 h-4" />

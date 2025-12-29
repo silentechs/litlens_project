@@ -92,6 +92,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       sortOrder: searchParams.get("sortOrder") || undefined,
     });
 
+    // Project settings (needed for dual-screening + blind-screening enforcement)
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      select: { requireDualScreening: true, blindScreening: true },
+    });
+
+    const reviewersRequired = project?.requireDualScreening ? 2 : 1;
+
+    // ✅ Blind screening: reviewers should not see who/when others voted.
+    // Leads/owners may still need visibility to manage the workflow.
+    const hideOtherReviewers = project?.blindScreening === true && membership.role === "REVIEWER";
+
     // Build where clause
     const where: Record<string, unknown> = {
       projectId,
@@ -164,23 +176,77 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             year: true,
             journal: true,
             doi: true,
+            url: true,
             keywords: true,
           },
         },
         decisions: {
           where: {
-            reviewerId: session.user.id,
             phase: filters.phase || "TITLE_ABSTRACT",
+            ...(hideOtherReviewers ? { reviewerId: session.user.id } : {}),
           },
-          take: 1,
+          ...(hideOtherReviewers
+            ? {}
+            : {
+                include: {
+                  reviewer: {
+                    select: {
+                      id: true,
+                      name: true,
+                      image: true,
+                    },
+                  },
+                },
+              }),
+        },
+        tags: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+          },
         },
       },
     });
 
-    // Transform response
+    // Transform response with dual screening status
     const queueItems = items.map((item) => {
       const authors = (item.work.authors as Array<{ name: string }>) || [];
-      const userDecision = item.decisions[0];
+      const decisions = item.decisions || [];
+      const userDecision = decisions.find((d) => d.reviewerId === session.user.id);
+      const otherDecisions = hideOtherReviewers ? [] : decisions.filter((d) => d.reviewerId !== session.user.id);
+
+      // Determine reviewer status (only when not blind for this user)
+      let reviewerStatus:
+        | "FIRST_REVIEWER"
+        | "SECOND_REVIEWER"
+        | "AWAITING_OTHER"
+        | "COMPLETED"
+        | undefined;
+      let votedReviewers:
+        | Array<{ id: string; name: string | null; image: string | null; votedAt: string }>
+        | undefined;
+      let reviewersVoted: number | undefined;
+      let totalReviewersNeeded: number | undefined;
+
+      if (!hideOtherReviewers) {
+        if (!userDecision) {
+          // User hasn't voted yet
+          reviewerStatus = otherDecisions.length > 0 ? "SECOND_REVIEWER" : "FIRST_REVIEWER";
+        } else {
+          // User has voted
+          reviewerStatus = decisions.length >= reviewersRequired ? "COMPLETED" : "AWAITING_OTHER";
+        }
+
+        votedReviewers = decisions.map((d) => ({
+          id: d.reviewerId,
+          name: (d as { reviewer?: { name?: string | null } }).reviewer?.name || null,
+          image: (d as { reviewer?: { image?: string | null } }).reviewer?.image || null,
+          votedAt: d.createdAt.toISOString(),
+        }));
+        reviewersVoted = decisions.length;
+        totalReviewersNeeded = reviewersRequired;
+      }
 
       return {
         id: item.id,
@@ -193,6 +259,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         journal: item.work.journal,
         year: item.work.year,
         doi: item.work.doi,
+        url: item.work.url,
         keywords: item.work.keywords,
         aiSuggestion: item.aiSuggestion,
         aiConfidence: item.aiConfidence,
@@ -201,6 +268,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         userDecision: userDecision?.decision || null,
         importSource: item.importSource,
         createdAt: item.createdAt.toISOString(),
+        // Full-text / ingestion status (for Evidence Chat)
+        pdfR2Key: item.pdfR2Key ?? null,
+        pdfUploadedAt: item.pdfUploadedAt ? item.pdfUploadedAt.toISOString() : null,
+        pdfFileSize: item.pdfFileSize ?? null,
+        pdfSource: item.pdfSource ?? null,
+        ingestionStatus: item.ingestionStatus ?? null,
+        ingestionError: item.ingestionError ?? null,
+        chunksCreated: item.chunksCreated ?? 0,
+        lastIngestedAt: item.lastIngestedAt ? item.lastIngestedAt.toISOString() : null,
+        // Dual screening status
+        reviewerStatus,
+        votedReviewers,
+        totalReviewersNeeded,
+        reviewersVoted,
+        // Tags
+        tags: item.tags.map((tag) => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color,
+        })),
       };
     });
 

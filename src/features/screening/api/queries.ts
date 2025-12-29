@@ -9,6 +9,7 @@ import type {
   ConflictResolutionInput,
   ScreeningStats,
   ScreeningPhase,
+  ScreeningBatchParams,
 } from "@/lib/api-client";
 import type { ApiSuccessResponse, PaginationMeta } from "@/types/api";
 
@@ -21,6 +22,7 @@ interface ScreeningQueueParams {
   phase?: ScreeningPhase;
   status?: string;
   search?: string;
+  sortBy?: string;
 }
 
 async function fetchScreeningQueue(
@@ -32,6 +34,7 @@ async function fetchScreeningQueue(
   if (params.phase) searchParams.set("phase", params.phase);
   if (params.status) searchParams.set("status", params.status);
   if (params.search) searchParams.set("search", params.search);
+  if (params.sortBy) searchParams.set("sortBy", params.sortBy);
 
   const response = await fetch(
     `/api/projects/${params.projectId}/screening/queue?${searchParams.toString()}`,
@@ -303,8 +306,8 @@ export function useBatchOperation(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { operation: string; projectWorkIds: string[]; targetPhase?: string; decision?: string }) =>
-      screeningApi.batchOperation(projectId, data),
+    mutationFn: (data: ScreeningBatchParams) =>
+      screeningApi.batch(projectId, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: screeningKeys.queues() });
       queryClient.invalidateQueries({ queryKey: screeningKeys.conflicts(projectId) });
