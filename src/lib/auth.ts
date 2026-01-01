@@ -12,8 +12,11 @@ const credentialsSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
+import { authConfig } from "./auth.config";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(db),
+  ...authConfig,
 
   providers: [
     // Magic Link via Resend
@@ -95,21 +98,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
 
-  session: {
-    strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-
   // Trust host for local development
   trustHost: true,
-
-  pages: {
-    signIn: "/login",
-    signOut: "/login",
-    error: "/login",
-    verifyRequest: "/verify-request",
-    newUser: "/onboarding",
-  },
 
   callbacks: {
     async jwt({ token, user, trigger, session }) {
@@ -283,10 +273,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
     },
   },
-
-  secret: process.env.AUTH_SECRET,
-  debug: process.env.NODE_ENV === "development",
 });
+
+
 
 // ============== PASSWORD UTILITIES ==============
 
