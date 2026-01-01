@@ -164,10 +164,17 @@ export function CitationGraph({ projectId }: CitationGraphProps) {
           avgDegree: 0,
         },
       };
-      
+
       setCurrentGraphData(graphData);
       setElements(transformToCytoscape(graphData));
-      toast.success("Graph loaded successfully");
+
+      if (graphData.nodes.length === 0) {
+        toast.warning("Graph loaded but contains no data", {
+          description: "This usually means no studies have been marked as 'INCLUDED' yet."
+        });
+      } else {
+        toast.success("Graph loaded successfully");
+      }
     } catch (error) {
       console.error("Load error:", error);
       toast.error("Failed to load graph");
@@ -211,6 +218,15 @@ export function CitationGraph({ projectId }: CitationGraphProps) {
       };
       setCurrentGraphData(graphData);
       setElements(transformToCytoscape(graphData));
+
+      if (graphData.nodes.length === 0) {
+        toast.warning("Graph generated but contains no data", {
+          description: "Ensure you have studies with 'INCLUDED' status."
+        });
+      } else {
+        toast.success("Graph generated successfully");
+      }
+
       setShowProjectSelect(false);
       queryClient.invalidateQueries({ queryKey: ["recent-graphs"] });
     },
@@ -224,6 +240,21 @@ export function CitationGraph({ projectId }: CitationGraphProps) {
     // Only run on mount or when projectId/type changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, graphType]);
+
+  /* Force resize and fit when elements change */
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (cy && elements.length > 0) {
+      // Small timeout to ensure container has dimensions
+      const timer = setTimeout(() => {
+        cy.resize();
+        cy.layout(layoutConfig as any).run();
+        cy.fit(cy.elements(), 50);
+        cy.center();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [elements]);
 
   const cyRef = useRef<cytoscape.Core | null>(null);
 
@@ -597,7 +628,7 @@ export function CitationGraph({ projectId }: CitationGraphProps) {
       <div className="accent-line hidden md:block" />
 
       {/* Onboarding State */}
-      {isEmpty ? (
+      {!currentGraphData ? (
         <div className="flex-1 flex flex-col items-center justify-center p-6 md:p-12 text-center space-y-6 md:space-y-8 bg-slate-50/50 overflow-y-auto">
           <div className="w-16 h-16 md:w-20 md:h-20 bg-white border border-slate-200 rounded-2xl flex items-center justify-center shadow-sm shrink-0">
             <Network className="w-6 h-6 md:w-8 md:h-8 text-slate-400" />
@@ -737,6 +768,19 @@ export function CitationGraph({ projectId }: CitationGraphProps) {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </div>
+      ) : isEmpty ? (
+        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
+          <div className="w-20 h-20 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-center mb-6">
+            <Filter className="w-8 h-8 text-amber-500" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Graph is Empty</h2>
+          <p className="text-slate-500 max-w-md mb-8">
+            This graph has no nodes or connections. This typically happens when there are no studies marked as <strong>INCLUDED</strong> in your project yet.
+          </p>
+          <Button onClick={() => setShowProjectSelect(true)} variant="outline">
+            Generate New Graph
+          </Button>
         </div>
       ) : (
         <>

@@ -35,7 +35,8 @@ import {
   CheckCircle,
   Settings as SettingsIcon,
   Network,
-  Bot
+  Bot,
+  CircleHelp
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useSession, signOut } from "next-auth/react";
@@ -260,7 +261,8 @@ function IntelNav({ isOpen, onItemClick }: { isOpen: boolean, onItemClick?: () =
 }
 
 function AvatarMenu() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const user = session?.user;
   const isAdmin = user?.role === 'ADMIN';
   const [mounted, setMounted] = useState(false);
@@ -270,30 +272,44 @@ function AvatarMenu() {
     setMounted(true);
   }, []);
 
-  // Get initials for avatar fallback
-  const initials = user?.name
-    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
-    : user?.email?.substring(0, 2).toUpperCase() || "??";
+  // Redirect to login if not authenticated (after mount to avoid hydration issues)
+  useEffect(() => {
+    if (mounted && status === 'unauthenticated') {
+      router.push('/login');
+    }
+  }, [mounted, status, router]);
 
-  // Render button without dropdown until mounted to prevent hydration error
-  if (!mounted) {
+  // Show loading state while checking authentication
+  if (status === 'loading' || !mounted) {
     return (
-      <button className="w-8 h-8 rounded-full bg-paper border border-border flex items-center justify-center overflow-hidden hover:border-ink transition-colors outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
-        {user?.image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={user.image} alt={user.name || "User Avatar"} className="w-full h-full object-cover" />
-        ) : (
-          <div className="text-[10px] font-bold text-muted">{initials}</div>
-        )}
-      </button>
+      <div className="w-8 h-8 rounded-full bg-paper border border-border flex items-center justify-center overflow-hidden animate-pulse">
+        <div className="w-4 h-4 bg-muted/30 rounded-full" />
+      </div>
     );
   }
+
+  // If not authenticated, show sign-in button
+  if (!user) {
+    return (
+      <Link
+        href="/login"
+        className="flex items-center gap-2 px-4 py-2 text-sm font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors"
+      >
+        Sign In
+      </Link>
+    );
+  }
+
+  // Get initials for avatar fallback
+  const initials = user.name
+    ? user.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+    : user.email?.substring(0, 2).toUpperCase() || "U";
 
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
         <button className="w-8 h-8 rounded-full bg-paper border border-border flex items-center justify-center overflow-hidden hover:border-ink transition-colors outline-none focus:ring-2 focus:ring-ink focus:ring-offset-2">
-          {user?.image ? (
+          {user.image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={user.image} alt={user.name || "User Avatar"} className="w-full h-full object-cover" />
           ) : (
@@ -309,8 +325,8 @@ function AvatarMenu() {
           align="end"
         >
           <div className="px-3 py-2 border-b border-border/50 mb-1">
-            <p className="text-xs font-bold font-mono uppercase tracking-widest text-ink">{user?.name || "Anonymous User"}</p>
-            <p className="text-[10px] text-muted font-serif italic">{user?.email || "No email provided"}</p>
+            <p className="text-xs font-bold font-mono uppercase tracking-widest text-ink">{user.name || user.email?.split('@')[0]}</p>
+            <p className="text-[10px] text-muted font-serif italic">{user.email}</p>
           </div>
 
           {isAdmin && (
@@ -436,6 +452,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Footer Actions */}
         <div className="p-4 border-t border-border space-y-2">
+          <NavItem icon={<CircleHelp className="w-5 h-5" />} label="Help & Docs" isOpen={isSidebarOpen} href="/help" />
           <NavItem icon={<SettingsIcon className="w-5 h-5" />} label="Settings" isOpen={isSidebarOpen} href="/settings" />
           <button
             onClick={toggleSidebar}
@@ -502,6 +519,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <IntelNav isOpen={true} onItemClick={() => setIsMobileMenuOpen(false)} />
           )}
         </nav>
+
+        {/* Mobile Footer Actions */}
+        <div className="p-4 border-t border-border space-y-2">
+          <NavItem icon={<CircleHelp className="w-5 h-5" />} label="Help & Docs" isOpen={true} href="/help" onClick={() => setIsMobileMenuOpen(false)} />
+          <NavItem icon={<SettingsIcon className="w-5 h-5" />} label="Settings" isOpen={true} href="/settings" onClick={() => setIsMobileMenuOpen(false)} />
+        </div>
       </aside>
 
       {/* Main Content */}

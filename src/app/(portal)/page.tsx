@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
-import { ArrowRight, Sparkles, Brain, Search, Network, BookOpen, ShieldCheck } from "lucide-react";
+import { ArrowRight, Sparkles, Brain, Search, Network, BookOpen, ShieldCheck, LogIn, User } from "lucide-react";
 
 export default function LandingPage() {
+    const { data: session, status } = useSession();
+    const isAuthenticated = !!session?.user;
+    const isLoading = status === "loading";
+
     return (
         <div className="min-h-screen bg-paper text-ink font-sans selection:bg-ink selection:text-paper">
             {/* Navigation */}
@@ -17,9 +21,31 @@ export default function LandingPage() {
                 <div className="flex items-center gap-4 md:gap-8">
                     <Link href="#features" className="hidden md:block text-[10px] font-mono uppercase tracking-[0.2em] hover:text-intel-blue transition-colors">Features</Link>
                     <Link href="#methodology" className="hidden md:block text-[10px] font-mono uppercase tracking-[0.2em] hover:text-intel-blue transition-colors">Methodology</Link>
-                    <Link href="/dashboard">
-                        <button className="btn-editorial py-1.5 md:py-2 px-4 md:px-6 text-sm md:text-base">Enter Workspace</button>
-                    </Link>
+                    
+                    {isLoading ? (
+                        <div className="btn-editorial py-1.5 md:py-2 px-4 md:px-6 text-sm md:text-base opacity-50">
+                            Loading...
+                        </div>
+                    ) : isAuthenticated ? (
+                        <Link href="/dashboard">
+                            <button className="btn-editorial py-1.5 md:py-2 px-4 md:px-6 text-sm md:text-base flex items-center gap-2">
+                                <User className="w-4 h-4" />
+                                Enter Workspace
+                            </button>
+                        </Link>
+                    ) : (
+                        <div className="flex items-center gap-3">
+                            <Link href="/login" className="hidden sm:block text-[10px] font-mono uppercase tracking-[0.2em] hover:text-intel-blue transition-colors">
+                                Sign In
+                            </Link>
+                            <Link href="/register">
+                                <button className="btn-editorial py-1.5 md:py-2 px-4 md:px-6 text-sm md:text-base flex items-center gap-2">
+                                    <LogIn className="w-4 h-4" />
+                                    Get Started
+                                </button>
+                            </Link>
+                        </div>
+                    )}
                 </div>
             </nav>
 
@@ -59,12 +85,33 @@ export default function LandingPage() {
                         transition={{ duration: 0.8, delay: 0.4, ease: "easeOut" }}
                         className="flex flex-col sm:flex-row items-center justify-center gap-4 md:gap-6 pt-4 md:pt-8"
                     >
-                        <Link href="/dashboard" className="w-full sm:w-auto">
-                            <button className="btn-editorial text-xl md:text-2xl px-8 md:px-12 py-4 md:py-6 flex items-center justify-center gap-4 group w-full">
-                                Begin Investigation
-                                <ArrowRight className="w-5 h-5 md:w-6 md:h-6 group-hover:translate-x-1 transition-transform" />
-                            </button>
-                        </Link>
+                        {isLoading ? (
+                            <div className="btn-editorial text-xl md:text-2xl px-8 md:px-12 py-4 md:py-6 opacity-50 w-full sm:w-auto">
+                                Loading...
+                            </div>
+                        ) : isAuthenticated ? (
+                            <Link href="/dashboard" className="w-full sm:w-auto">
+                                <button className="btn-editorial text-xl md:text-2xl px-8 md:px-12 py-4 md:py-6 flex items-center justify-center gap-4 group w-full">
+                                    Continue to Dashboard
+                                    <ArrowRight className="w-5 h-5 md:w-6 md:h-6 group-hover:translate-x-1 transition-transform" />
+                                </button>
+                            </Link>
+                        ) : (
+                            <>
+                                <Link href="/register" className="w-full sm:w-auto">
+                                    <button className="btn-editorial text-xl md:text-2xl px-8 md:px-12 py-4 md:py-6 flex items-center justify-center gap-4 group w-full">
+                                        Begin Investigation
+                                        <ArrowRight className="w-5 h-5 md:w-6 md:h-6 group-hover:translate-x-1 transition-transform" />
+                                    </button>
+                                </Link>
+                                <Link href="/login" className="w-full sm:w-auto">
+                                    <button className="text-xs md:text-sm font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors px-8 md:px-12 py-4 md:py-6 border border-border hover:bg-white bg-transparent rounded-sm w-full sm:w-auto flex items-center justify-center gap-2">
+                                        <LogIn className="w-4 h-4" />
+                                        Sign In
+                                    </button>
+                                </Link>
+                            </>
+                        )}
                         <button className="text-xs md:text-sm font-mono uppercase tracking-widest text-muted hover:text-ink transition-colors px-8 md:px-12 py-4 md:py-6 border border-border hover:bg-white bg-transparent rounded-sm w-full sm:w-auto">
                             Watch the Film
                         </button>
@@ -139,11 +186,25 @@ export default function LandingPage() {
                 <div className="max-w-5xl mx-auto px-6 md:px-8 text-center space-y-8 md:space-y-12">
                     <h2 className="text-4xl md:text-6xl font-serif">Begin your next review.</h2>
                     <p className="text-lg md:text-xl font-serif italic text-paper/60 pb-4 md:pb-8">Join the investigative elite bridging the gap between data and insight.</p>
-                    <Link href="/dashboard">
-                        <button className="bg-white text-ink px-10 md:px-16 py-6 md:py-8 text-xl md:text-2xl font-serif hover:bg-paper transition-colors rounded-sm shadow-editorial">
-                            Inaugurate Project
-                        </button>
-                    </Link>
+                    
+                    {isLoading ? (
+                        <div className="bg-white/50 text-ink px-10 md:px-16 py-6 md:py-8 text-xl md:text-2xl font-serif rounded-sm inline-block">
+                            Loading...
+                        </div>
+                    ) : isAuthenticated ? (
+                        <Link href="/projects/new">
+                            <button className="bg-white text-ink px-10 md:px-16 py-6 md:py-8 text-xl md:text-2xl font-serif hover:bg-paper transition-colors rounded-sm shadow-editorial">
+                                Create New Project
+                            </button>
+                        </Link>
+                    ) : (
+                        <Link href="/register">
+                            <button className="bg-white text-ink px-10 md:px-16 py-6 md:py-8 text-xl md:text-2xl font-serif hover:bg-paper transition-colors rounded-sm shadow-editorial">
+                                Create Free Account
+                            </button>
+                        </Link>
+                    )}
+                    
                     <div className="pt-16 md:pt-24 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-8 text-[10px] font-mono uppercase tracking-[0.3em] text-paper/30">
                         <span>© 2025 LitLens Intelligence</span>
                         <div className="flex gap-8">

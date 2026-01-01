@@ -145,6 +145,9 @@ export const api = {
     request<T>(path, { method: "DELETE", params }),
 };
 
+// Backwards compatibility alias
+export const apiClient = api;
+
 // ============== PAGINATED RESPONSE TYPE ==============
 
 export interface PaginatedResponse<T> {
@@ -422,6 +425,13 @@ export interface ScreeningNextSteps {
     total: number;
     included: number;
     excluded: number;
+    maybe: number;
+  };
+  userStats: {
+    total: number;
+    included: number;
+    excluded: number;
+    pending: number;
     maybe: number;
   };
   canMoveToNextPhase: boolean;

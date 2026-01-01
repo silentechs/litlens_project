@@ -100,6 +100,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
 
+  // Trust host for local development
+  trustHost: true,
+
   pages: {
     signIn: "/login",
     signOut: "/login",
@@ -155,17 +158,37 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
 
     async signIn({ user, account }) {
+      // Log sign-in attempt for debugging
+      console.log("[Auth] signIn callback:", {
+        provider: account?.provider,
+        userId: user?.id,
+        userEmail: user?.email,
+        accountType: account?.type,
+      });
+
       // For credentials provider, always allow (password already verified)
       if (account?.provider === "credentials") {
         return true;
       }
 
-      // For magic link, check email exists
-      if (!user?.email) {
+      // For email/magic link providers (Resend), allow if user exists
+      if (account?.provider === "resend" || account?.type === "email") {
+        // User should exist at this point (created by adapter if new)
+        if (user?.id && user?.email) {
+          console.log("[Auth] Magic link sign-in successful for:", user.email);
+          return true;
+        }
+        console.log("[Auth] Magic link sign-in failed - missing user data");
         return false;
       }
 
-      return true;
+      // Default: allow sign-in if user has email
+      if (user?.email) {
+        return true;
+      }
+
+      console.log("[Auth] Sign-in denied - no email");
+      return false;
     },
   },
 

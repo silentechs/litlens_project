@@ -10,6 +10,8 @@ import {
     success,
 } from "@/lib/api";
 import type { ScreeningPhase } from "@/types/screening";
+// ✅ LOGIC UNIFICATION: Import domain constants to avoid duplicating logic
+import { DECISION_STATUS_MAP } from "@/domain/screening/types";
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -88,18 +90,69 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         for (const study of pendingWithDecisions) {
             // If we only have 1 member, or dual screening is off, or we have 2+ decisions
             if (membersCount === 1 || !project?.requireDualScreening || study.decisions.length >= 2) {
-                const latest = study.decisions[0];
-                await db.projectWork.update({
-                    where: { id: study.id },
-                    data: {
-                        status: latest.decision === "INCLUDE" ? "INCLUDED" :
-                            latest.decision === "EXCLUDE" ? "EXCLUDED" : "MAYBE",
-                        finalDecision: latest.decision
-                    }
+                // ✅ S2 FIX: Sort decisions by createdAt descending to get latest first
+                const sortedDecisions = [...study.decisions].sort(
+                    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+
+                // ✅ S2 FIX: Implement Majority Rule Logic (instead of strict consensus)
+                const counts = { INCLUDE: 0, EXCLUDE: 0, MAYBE: 0 };
+                study.decisions.forEach(d => {
+                    if (d.decision in counts) counts[d.decision as keyof typeof counts]++;
                 });
+
+                const totalDecisions = study.decisions.length;
+                let finalDecision: string | null = null;
+
+                // Simple Majority Check
+                // If any decision has > 50% of the votes, it wins.
+                // For 2 reviewers: Needs 2 (Unanimous). 1-1 is a tie (Conflict).
+                // For 3 reviewers: Needs 2.
+                for (const [decision, count] of Object.entries(counts)) {
+                    if (count > totalDecisions / 2) {
+                        finalDecision = decision;
+                        break;
+                    }
+                }
+
+                if (finalDecision) {
+                    await db.projectWork.update({
+                        where: { id: study.id },
+                        data: {
+                            status: DECISION_STATUS_MAP[finalDecision as keyof typeof DECISION_STATUS_MAP],
+                            finalDecision: finalDecision as any
+                        }
+                    });
+                } else {
+                    // Tie or no majority -> Conflict (Skip auto-repair)
+                    console.warn(`[AdvancePhase] Skipping study ${study.id} - no majority decision (Conflict)`);
+                    continue;
+                }
             }
         }
         // --------------------------------
+
+        // ✅ S6 FIX: Phase Advancement Validation (Check for missing PDFs)
+        if (nextPhase === 'FULL_TEXT') {
+            const missingPdfCount = await db.projectWork.count({
+                where: {
+                    projectId,
+                    phase: currentPhase,
+                    status: "INCLUDED",
+                    pdfR2Key: null,
+                    work: {
+                        url: null // Assuming URL is strictly required if PDF is missing
+                    }
+                }
+            });
+
+            if (missingPdfCount > 0) {
+                throw new ValidationError(
+                    `Cannot advance phase: ${missingPdfCount} included studies are missing PDFs or URLs. ` +
+                    `Please retrieve PDFs for these studies before advancing to Full Text.`
+                );
+            }
+        }
 
         // Find all INCLUDED works in the current phase
         const worksToAdvance = await db.projectWork.findMany({

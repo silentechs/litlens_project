@@ -111,7 +111,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             };
         });
 
-        return NextResponse.json(queueItems);
+        return NextResponse.json({ success: true, data: queueItems });
 
     } catch (error) {
         console.error("[EXTRACTION_QUEUE_GET]", error);

@@ -18,7 +18,7 @@ export function calculateCohensKappa(pairs: DecisionPair[]): number {
   if (pairs.length === 0) return 0;
 
   const n = pairs.length;
-  
+
   // Calculate observed agreement (Po)
   let agreements = 0;
   for (const pair of pairs) {
@@ -49,7 +49,7 @@ export function calculateCohensKappa(pairs: DecisionPair[]): number {
 
   // Calculate Kappa
   if (pe === 1) return 1; // Perfect agreement by chance
-  
+
   const kappa = (po - pe) / (1 - pe);
   return Math.round(kappa * 1000) / 1000; // Round to 3 decimal places
 }
@@ -111,7 +111,8 @@ interface ScreeningAnalyticsParams {
 
 export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
   const { projectId, phase, include = ["all"] } = params;
-  const shouldInclude = (metric: string) => 
+  const dbPhase = (phase as unknown as string) === "all" ? undefined : phase;
+  const shouldInclude = (metric: string) =>
     include.includes("all") || include.includes(metric);
 
   const analytics: any = {
@@ -122,8 +123,8 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
 
   // Get all project works for this phase
   const whereClause: any = { projectId };
-  if (phase) {
-    whereClause.phase = phase;
+  if (dbPhase) {
+    whereClause.phase = dbPhase;
   }
 
   const projectWorks = await db.projectWork.findMany({
@@ -184,7 +185,7 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
     );
 
     if (dualScreenedStudies.length > 0) {
-      const agreements = dualScreenedStudies.filter(pw => 
+      const agreements = dualScreenedStudies.filter(pw =>
         pw.decisions[0].decision === pw.decisions[1].decision
       ).length;
 
@@ -211,14 +212,14 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
     const conflicts = await db.conflict.count({
       where: {
         projectId,
-        ...(phase && { phase }),
+        ...(dbPhase && { phase: dbPhase }),
       },
     });
 
     const resolved = await db.conflict.count({
       where: {
         projectId,
-        ...(phase && { phase }),
+        ...(dbPhase && { phase: dbPhase }),
         status: "RESOLVED",
       },
     });
@@ -245,7 +246,7 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
           where: {
             reviewerId: reviewer.userId,
             projectWork: { projectId },
-            ...(phase && { phase }),
+            ...(dbPhase && { phase: dbPhase }),
           },
         });
 
@@ -261,7 +262,7 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
         const studiesWithFinal = await db.projectWork.findMany({
           where: {
             projectId,
-            ...(phase && { phase }),
+            ...(dbPhase && { phase: dbPhase }),
             finalDecision: { not: null },
             decisions: {
               some: { reviewerId: reviewer.userId },
@@ -274,7 +275,7 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
           },
         });
 
-        const agreementsWithFinal = studiesWithFinal.filter(pw => 
+        const agreementsWithFinal = studiesWithFinal.filter(pw =>
           pw.decisions[0]?.decision === pw.finalDecision
         ).length;
 
@@ -304,7 +305,7 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
     const decisions = await db.screeningDecisionRecord.findMany({
       where: {
         projectWork: { projectId },
-        ...(phase && { phase }),
+        ...(dbPhase && { phase: dbPhase }),
       },
       select: {
         createdAt: true,
@@ -315,7 +316,7 @@ export async function getScreeningAnalytics(params: ScreeningAnalyticsParams) {
 
     // Group by day
     const velocityByDay: Record<string, { count: number; totalTime: number }> = {};
-    
+
     for (const decision of decisions) {
       const date = decision.createdAt.toISOString().split("T")[0];
       if (!velocityByDay[date]) {
@@ -483,7 +484,7 @@ export async function getDecisionPairs(
  */
 export function calculateAgreementRate(pairs: DecisionPair[]): number {
   if (pairs.length === 0) return 0;
-  
+
   const agreements = pairs.filter(p => p.reviewer1 === p.reviewer2).length;
   return Math.round((agreements / pairs.length) * 100);
 }

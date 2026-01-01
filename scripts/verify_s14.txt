@@ -1,0 +1,15 @@
+
+// This is a temporary file to check DB structure if needed, or just reading schema.prisma again.
+// Actually, I already checked schema.prisma and confirmed Unique constraints.
+// S14: Duplicate Decision Prevention.
+// Constraint: @@unique([projectWorkId, reviewerId, phase]) on ScreeningDecisionRecord.
+// This prevents multiple decisions for same phase/reviewer.
+// The code in DecisionValidator checks memory, but the DB constraint is the real guard.
+// So S14 is effectively "Resolved by DB Constraint".
+// However, the audit said "Potential race condition".
+// DB constraint handles the race condition (one will fail with UniqueConstraintViolation).
+// I should handle that error in screening-service?
+// Currently: `await this.deps.repository.createDecision(...)`.
+// If it throws, the service throws.
+// User gets error.
+// That is acceptable behavior for race condition (optimistic locking equivalent).

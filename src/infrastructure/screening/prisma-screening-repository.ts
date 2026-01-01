@@ -16,6 +16,7 @@ import type {
   DecisionRecord,
   ScreeningConfig,
   ScreeningPhase,
+  ScreeningDecision,
   ConflictData,
 } from '@/domain/screening/types';
 
@@ -28,10 +29,29 @@ export class PrismaScreeningRepository implements ScreeningRepository {
         projectId: true,
         workId: true,
         phase: true,
+        pdfR2Key: true,
+        ingestionStatus: true,
+        work: {
+          select: {
+            url: true,
+          },
+        },
       },
     });
 
-    return projectWork;
+    if (!projectWork) {
+      return null;
+    }
+
+    return {
+      id: projectWork.id,
+      projectId: projectWork.projectId,
+      workId: projectWork.workId,
+      phase: projectWork.phase,
+      pdfR2Key: projectWork.pdfR2Key,
+      ingestionStatus: projectWork.ingestionStatus,
+      url: projectWork.work.url,
+    };
   }
 
   async getDecisions(
@@ -137,5 +157,74 @@ export class PrismaScreeningRepository implements ScreeningRepository {
       reviewersNeeded: project.requireDualScreening ? 2 : 1,
     };
   }
+
+  // ✅ CLEAN ARCHITECTURE FIX: Conflict methods moved from service to repository
+
+  /**
+   * Get a conflict by ID
+   */
+  async getConflict(conflictId: string): Promise<ConflictRecord | null> {
+    const conflict = await db.conflict.findUnique({
+      where: { id: conflictId },
+      select: {
+        id: true,
+        projectId: true,
+        projectWorkId: true,
+        phase: true,
+        status: true,
+        decisions: true,
+      },
+    });
+
+    if (!conflict) return null;
+
+    return {
+      id: conflict.id,
+      projectId: conflict.projectId,
+      projectWorkId: conflict.projectWorkId,
+      phase: conflict.phase as ScreeningPhase,
+      status: conflict.status,
+      decisions: conflict.decisions as any,
+    };
+  }
+
+  /**
+   * Create conflict resolution and update conflict status atomically
+   */
+  async createConflictResolution(data: {
+    conflictId: string;
+    resolverId: string;
+    finalDecision: ScreeningDecision;
+    reasoning?: string;
+  }): Promise<void> {
+    await db.$transaction([
+      db.conflictResolution.create({
+        data: {
+          conflictId: data.conflictId,
+          resolverId: data.resolverId,
+          finalDecision: data.finalDecision,
+          reasoning: data.reasoning,
+        },
+      }),
+      db.conflict.update({
+        where: { id: data.conflictId },
+        data: {
+          status: 'RESOLVED',
+          resolvedAt: new Date(),
+        },
+      }),
+    ]);
+  }
 }
 
+/**
+ * Conflict record type for repository
+ */
+export interface ConflictRecord {
+  id: string;
+  projectId: string;
+  projectWorkId: string;
+  phase: ScreeningPhase;
+  status: string;
+  decisions: any;
+}

@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { 
-  handleApiError, 
+import {
+  handleApiError,
   UnauthorizedError,
   ForbiddenError,
   NotFoundError,
@@ -119,10 +119,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Calculate progress percentages
     const screeningCompleted = (statusCounts.INCLUDED || 0) + (statusCounts.EXCLUDED || 0);
     const screeningTotal = totalStudies;
-    
+
     const stats = {
       totalStudies,
-      pendingScreening: statusCounts.PENDING || 0,
+      pendingScreening: (statusCounts.PENDING || 0) + (statusCounts.SCREENING || 0) + (statusCounts.CONFLICT || 0),
       included: statusCounts.INCLUDED || 0,
       excluded: statusCounts.EXCLUDED || 0,
       conflicts: conflictCounts.PENDING || 0,
@@ -132,8 +132,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         screening: {
           total: screeningTotal,
           completed: screeningCompleted,
-          percentage: screeningTotal > 0 
-            ? Math.round((screeningCompleted / screeningTotal) * 100) 
+          percentage: screeningTotal > 0
+            ? Math.round((screeningCompleted / screeningTotal) * 100)
             : 0,
         },
         fullText: {

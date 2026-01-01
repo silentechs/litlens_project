@@ -78,7 +78,7 @@ export class IngestionService {
   constructor(
     private readonly deps: IngestionDependencies,
     private readonly pdfFetcher: PDFFetcher
-  ) {}
+  ) { }
 
   /**
    * Ingest a document (main entry point)
@@ -135,7 +135,7 @@ export class IngestionService {
       };
     } catch (error) {
       const processingTime = Date.now() - startTime;
-      
+
       return {
         success: false,
         chunksCreated: 0,
@@ -150,6 +150,7 @@ export class IngestionService {
 
   /**
    * Embed chunks and store them (with batching for rate limits)
+   * ✅ R3 FIX: Added retry logic and fail-fast mechanism
    */
   private async embedAndStoreChunks(
     chunks: string[],
@@ -161,29 +162,55 @@ export class IngestionService {
 
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
-      
-      // Generate embeddings in parallel for batch
-      const embeddings = await this.deps.embedder.batchGenerateEmbeddings(batch);
 
-      // Prepare chunks with embeddings
-      const chunksWithEmbeddings = batch.map((content, idx) => ({
-        content,
-        embedding: embeddings[idx],
-        metadata: this.createChunkMetadata(
-          workId,
-          i + idx,
-          chunks.length,
-          pdfMetadata
-        ),
-      }));
+      let attempts = 0;
+      const MAX_RETRIES = 3;
+      let batchSuccess = false;
 
-      // Store batch
-      await this.deps.chunkStore.insertChunksBatch(chunksWithEmbeddings);
-      totalStored += batch.length;
+      while (attempts < MAX_RETRIES && !batchSuccess) {
+        attempts++;
+        try {
+          // Generate embeddings in parallel for batch
+          const embeddings = await this.deps.embedder.batchGenerateEmbeddings(batch);
 
-      // Small delay between batches to respect rate limits
-      if (i + BATCH_SIZE < chunks.length) {
-        await this.delay(200);
+          // Prepare chunks with embeddings
+          const chunksWithEmbeddings = batch.map((content, idx) => ({
+            content,
+            embedding: embeddings[idx],
+            metadata: this.createChunkMetadata(
+              workId,
+              i + idx,
+              chunks.length,
+              pdfMetadata
+            ),
+          }));
+
+          // Store batch
+          await this.deps.chunkStore.insertChunksBatch(chunksWithEmbeddings);
+          totalStored += batch.length;
+          batchSuccess = true;
+
+          // Small delay between batches to respect rate limits
+          if (i + BATCH_SIZE < chunks.length) {
+            await this.delay(200);
+          }
+
+        } catch (error: any) {
+          console.error(`[Ingestion] Batch processing failed (Attempt ${attempts}/${MAX_RETRIES}):`, error);
+
+          if (attempts >= MAX_RETRIES) {
+            throw new Error(`Failed to ingest batch after ${MAX_RETRIES} attempts. Error: ${error.message}`);
+          }
+
+          // Check if it's a rate limit error (429)
+          const isRateLimit = error?.status === 429 || error?.code === 'rate_limit_exceeded';
+          const delayMs = isRateLimit
+            ? Math.min(1000 * Math.pow(2, attempts) + (Math.random() * 1000), 10000) // Jittered backoff for rate limits
+            : 1000 * attempts; // Simple linear backoff for other errors
+
+          console.log(`[Ingestion] Retrying batch in ${delayMs}ms...`);
+          await this.delay(delayMs);
+        }
       }
     }
 
@@ -244,7 +271,7 @@ export class RecursiveTextChunker implements TextChunker {
 
     while (start < text.length) {
       const end = Math.min(start + config.chunkSize, text.length);
-      
+
       // Try to break at natural boundaries
       let splitPoint = end;
       if (end < text.length) {

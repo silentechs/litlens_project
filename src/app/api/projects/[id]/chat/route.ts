@@ -184,7 +184,8 @@ export async function POST(req: Request, { params }: RouteParams) {
         let retrieved: Array<{ similarity: number; title?: string; doi?: string; content: string }> = [];
         let abstractRetrieved: Array<{ title: string; year?: number | null; doi?: string | null; abstract?: string | null }> = [];
 
-        if (lastUserText && lastUserText.length >= 8 && ingestedIncludedCount > 0) {
+        // ✅ R4 FIX: Reduced minimum query length from 8 to 3 for short research queries
+        if (lastUserText && lastUserText.length >= 3 && ingestedIncludedCount > 0) {
             try {
                 const chunks = await searchProjectKnowledge(projectId, lastUserText, {
                     limit: 6,
@@ -203,7 +204,8 @@ export async function POST(req: Request, { params }: RouteParams) {
         }
 
         // Fallback: if no ingested PDFs yet, ground on titles/abstracts so chat is still useful pre-screening.
-        if (retrieved.length === 0 && lastUserText && lastUserText.length >= 8) {
+        // ✅ R4 FIX: Reduced minimum query length from 8 to 3
+        if (retrieved.length === 0 && lastUserText && lastUserText.length >= 3) {
             const hits = await db.projectWork.findMany({
                 where: {
                     projectId,

@@ -235,6 +235,13 @@ export interface ScreeningNextSteps {
     excluded: number;
     maybe: number;
   };
+  userStats: {
+    total: number;
+    included: number;
+    excluded: number;
+    pending: number;
+    maybe: number;
+  };
   canMoveToNextPhase: boolean;
   nextPhase?: ScreeningPhase;
 }

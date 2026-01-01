@@ -142,58 +142,49 @@ async function handleBatchDecision(
     throw new ForbiddenError("Only project leads can make batch decisions");
   }
 
-  // Process in transaction
-  const results = await db.$transaction(async (tx) => {
-    const processed: string[] = [];
-    const failed: { projectWorkId: string; error: string }[] = [];
+  // ✅ S5 FIX: Use ScreeningService for proper state transitions
+  const screeningService = new ScreeningService({
+    repository: new PrismaScreeningRepository(),
+    eventPublisher: new ScreeningEventPublisherAdapter(),
+    ingestionQueue: new BullMQIngestionQueue(),
+  });
 
-    for (const projectWorkId of data.projectWorkIds) {
-      try {
-        // Check if study exists in project
-        const projectWork = await tx.projectWork.findFirst({
-          where: { id: projectWorkId, projectId },
-        });
+  const processed: string[] = [];
+  const failed: { projectWorkId: string; error: string }[] = [];
 
-        if (!projectWork) {
-          failed.push({ projectWorkId, error: "Study not found" });
-          continue;
-        }
+  // Process each decision through the service layer
+  for (const projectWorkId of data.projectWorkIds) {
+    try {
+      // Verify projectWork exists in this project
+      const projectWork = await db.projectWork.findFirst({
+        where: { id: projectWorkId, projectId },
+      });
 
-        // Check for existing decision
-        const existing = await tx.screeningDecisionRecord.findUnique({
-          where: {
-            projectWorkId_reviewerId_phase: {
-              projectWorkId,
-              reviewerId: userId,
-              phase: data.phase,
-            },
-          },
-        });
+      if (!projectWork) {
+        failed.push({ projectWorkId, error: "Study not found" });
+        continue;
+      }
 
-        if (existing) {
-          failed.push({ projectWorkId, error: "Already decided" });
-          continue;
-        }
+      // ✅ Use service to process decision (handles state transitions, conflicts, ingestion)
+      await screeningService.processDecision({
+        projectWorkId,
+        reviewerId: userId,
+        phase: data.phase,
+        decision: data.decision,
+        reasoning: data.reasoning,
+      });
 
-        // Create decision
-        await tx.screeningDecisionRecord.create({
-          data: {
-            projectWorkId,
-            reviewerId: userId,
-            phase: data.phase,
-            decision: data.decision,
-            reasoning: data.reasoning,
-          },
-        });
-
-        processed.push(projectWorkId);
-      } catch {
-        failed.push({ projectWorkId, error: "Processing failed" });
+      processed.push(projectWorkId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Processing failed";
+      // ✅ Gracefully handle "already decided" errors
+      if (message.includes("already screened")) {
+        failed.push({ projectWorkId, error: "Already decided" });
+      } else {
+        failed.push({ projectWorkId, error: message });
       }
     }
-
-    return { processed: processed.length, failed: failed.length, errors: failed };
-  });
+  }
 
   // Log activity
   await db.activity.create({
@@ -201,16 +192,21 @@ async function handleBatchDecision(
       userId,
       projectId,
       type: "SCREENING_DECISION",
-      description: `Batch ${data.decision} decision on ${results.processed} studies`,
+      description: `Batch ${data.decision} decision on ${processed.length} studies`,
       metadata: {
         phase: data.phase,
         decision: data.decision,
-        count: results.processed,
+        count: processed.length,
+        failedCount: failed.length,
       },
     },
   });
 
-  return success(results);
+  return success({
+    processed: processed.length,
+    failed: failed.length,
+    errors: failed,
+  });
 }
 
 // ============== HELPERS ==============

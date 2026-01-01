@@ -90,7 +90,7 @@ export function FullTextControls({
       ? "bg-rose-50 border-rose-200 text-rose-800"
       : status === "PROCESSING" || status === "PENDING"
         ? "bg-amber-50 border-amber-200 text-amber-800"
-      : "bg-white border-border text-muted hover:border-ink hover:text-ink";
+        : "bg-white border-border text-muted hover:border-ink hover:text-ink";
 
   const openPicker = () => fileInputRef.current?.click();
 
@@ -248,21 +248,22 @@ export function FullTextControls({
           </button>
         )}
 
-        {!hasPdf && endNoteClickEnabled && !!endNoteTargetUrl && (
+        {/* ALWAYS show "Open Study Link" button if DOI or URL exists */}
+        {!!endNoteTargetUrl && (
           <button
             type="button"
             onClick={() => {
               window.open(endNoteTargetUrl, "_blank", "noopener,noreferrer");
-              toast.info("Tip: if you have EndNote Click installed, use it on the opened page to download the PDF, then upload it here.");
+              toast.success("Study page opened. Download the PDF from the publisher, then upload it here.");
             }}
             className={cn(
               "px-4 py-2 border rounded-full text-[11px] font-mono uppercase tracking-widest flex items-center gap-2 transition-all",
               "bg-white border-border hover:border-ink hover:text-ink text-muted"
             )}
-            title="Open the study page/DOI in a new tab so EndNote Click can try to retrieve the PDF."
+            title={`Open study link: ${doi ? `https://doi.org/${doi}` : workUrl}`}
           >
             <ExternalLink className="w-4 h-4" />
-            EndNote Click
+            Open Study Link
           </button>
         )}
       </div>

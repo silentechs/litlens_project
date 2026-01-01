@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ScreeningPhase } from "@/types/screening";
 import type { ProjectStats as ProjectStatsType } from "@/types/project";
 import {
@@ -7,7 +8,9 @@ import {
     Users,
     ArrowRight,
     ShieldAlert,
-    BarChart3
+    BarChart3,
+    User,
+    Users2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -28,6 +31,13 @@ interface ScreeningStatsProps {
             total: number;
             included: number;
             excluded: number;
+            maybe: number;
+        };
+        userStats?: {
+            total: number;
+            included: number;
+            excluded: number;
+            pending: number;
             maybe: number;
         };
         canMoveToNextPhase: boolean;
@@ -51,6 +61,15 @@ export function ScreeningStats({
 }: ScreeningStatsProps) {
     const params = useParams();
     const projectId = params.id as string;
+    const [viewMode, setViewMode] = useState<'team' | 'me'>('team');
+
+    const currentStats = (viewMode === 'team' ? stats.phaseStats : stats.userStats) || {
+        total: 0,
+        included: 0,
+        excluded: 0,
+        pending: 0,
+        maybe: 0
+    };
 
     const container = {
         hidden: { opacity: 0 },
@@ -96,17 +115,53 @@ export function ScreeningStats({
                 <h2 className="text-4xl font-serif italic text-ink">You're all caught up!</h2>
                 <p className="text-muted text-lg max-w-xl mx-auto font-serif">
                     You have no pending studies in the <span className="font-bold text-ink">{currentPhase}</span> phase.
-                    Here is the team's progress.
+                    Here is {viewMode === 'team' ? "the team's" : "your personal"} progress.
                 </p>
+                <div className="flex justify-center mt-2">
+                    <div className="bg-muted/10 p-1 rounded-lg inline-flex items-center border border-border">
+                        <button
+                            onClick={() => setViewMode('team')}
+                            className={cn(
+                                "px-4 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider flex items-center gap-2 transition-all",
+                                viewMode === 'team'
+                                    ? "bg-white text-ink shadow-sm border border-border/50"
+                                    : "text-muted hover:text-ink"
+                            )}
+                        >
+                            <Users2 className="w-3 h-3" />
+                            Team Consensus
+                        </button>
+                        <button
+                            onClick={() => setViewMode('me')}
+                            className={cn(
+                                "px-4 py-1.5 rounded-md text-xs font-mono uppercase tracking-wider flex items-center gap-2 transition-all",
+                                viewMode === 'me'
+                                    ? "bg-white text-ink shadow-sm border border-border/50"
+                                    : "text-muted hover:text-ink"
+                            )}
+                        >
+                            <User className="w-3 h-3" />
+                            My Decisions
+                        </button>
+                    </div>
+                </div>
+
                 {projectStats && (
-                    <p className="text-xs font-mono uppercase tracking-widest text-muted">
-                        Project total: <span className="text-ink font-bold">{projectStats.totalStudies}</span> studies
+                    <p className="text-xs font-mono uppercase tracking-widest text-muted mt-4">
+                        Total: <span className="text-ink font-bold">{currentStats.total}</span> studies
                         {" · "}
-                        Pending: <span className="text-ink font-bold">{projectStats.pendingScreening}</span>
+                        Pending: <span className="text-ink font-bold">
+                            {viewMode === 'team'
+                                ? currentStats.total - (currentStats.included + currentStats.excluded + ((currentStats as any).maybe || 0))
+                                : (stats.userStats?.pending || 0)
+                            }
+                        </span>
                         {" · "}
-                        Excluded: <span className="text-ink font-bold">{projectStats.excluded}</span>
+                        Excluded: <span className="text-ink font-bold">{currentStats.excluded}</span>
                         {" · "}
-                        Included: <span className="text-ink font-bold">{projectStats.included}</span>
+                        Included: <span className="text-ink font-bold">{currentStats.included}</span>
+                        {" · "}
+                        Maybe: <span className="text-ink font-bold">{currentStats.maybe || 0}</span>
                     </p>
                 )}
             </motion.div>
@@ -120,15 +175,20 @@ export function ScreeningStats({
                     </div>
                     <div className="relative z-10">
                         <span className="text-[10px] font-mono uppercase tracking-widest text-muted">
-                            Total Studies (Project)
+                            Total Studies (Phase)
                         </span>
                         <div className="text-5xl font-serif mt-2 text-ink">
-                            {projectStats?.totalStudies ?? stats.phaseStats.total}
+                            {currentStats.total}
                         </div>
                         <div className="flex gap-4 mt-4 text-xs font-mono text-muted">
-                            <span>Pending: {projectStats?.pendingScreening ?? "-"}</span>
-                            <span>Exc: {projectStats?.excluded ?? "-"}</span>
-                            <span>Inc: {projectStats?.included ?? "-"}</span>
+                            <span>Pending: {
+                                viewMode === 'team'
+                                    ? currentStats.total - (currentStats.included + currentStats.excluded + (currentStats.maybe || 0))
+                                    : (stats.userStats?.pending || 0)
+                            }</span>
+                            <span>Exc: {currentStats.excluded}</span>
+                            <span>Inc: {currentStats.included}</span>
+                            <span>Maybe: {currentStats.maybe || 0}</span>
                         </div>
                     </div>
                 </div>
@@ -136,7 +196,8 @@ export function ScreeningStats({
                 {/* Conflicts Card */}
                 <div className={cn(
                     "p-8 border shadow-sm rounded-sm space-y-4 relative overflow-hidden transition-colors",
-                    stats.conflicts > 0 ? "bg-amber-50 border-amber-200" : "bg-white border-border"
+                    stats.conflicts > 0 ? "bg-amber-50 border-amber-200" : "bg-white border-border",
+                    viewMode === 'me' && "opacity-50 grayscale" // Hide conflicts in user view effectively
                 )}>
                     <div className="relative z-10">
                         <div className="flex justify-between items-start">
@@ -144,7 +205,7 @@ export function ScreeningStats({
                                 "text-[10px] font-mono uppercase tracking-widest",
                                 stats.conflicts > 0 ? "text-amber-700 font-bold" : "text-muted"
                             )}>
-                                Create Conflicts
+                                {viewMode === 'team' ? "Create Conflicts" : "Team Conflicts"}
                             </span>
                             {stats.conflicts > 0 && <ShieldAlert className="w-5 h-5 text-amber-600 animate-pulse" />}
                         </div>
@@ -156,13 +217,18 @@ export function ScreeningStats({
                             {stats.conflicts}
                         </div>
 
-                        {stats.conflicts > 0 && (
+                        {stats.conflicts > 0 && viewMode === 'team' && (
                             <button
                                 onClick={onResolveConflicts}
                                 className="mt-4 text-xs font-bold uppercase tracking-wider text-amber-700 hover:text-amber-900 underline underline-offset-4 decoration-amber-300"
                             >
                                 Resolve Now →
                             </button>
+                        )}
+                        {viewMode === 'me' && (
+                            <p className="text-xs mt-4 text-muted">
+                                Switching to team view to resolve...
+                            </p>
                         )}
                     </div>
                 </div>

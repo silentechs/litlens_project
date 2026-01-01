@@ -136,8 +136,14 @@ export class ScreeningStateMachine {
       ? 'PENDING' // Reset for next phase
       : DECISION_STATUS_MAP[consensusDecision];
 
-    // Trigger ingestion only on final INCLUDE (not on phase advancement)
-    const shouldIngest = consensusDecision === 'INCLUDE' && !shouldAdvance;
+    // ✅ S6 FIX: Trigger ingestion on INCLUDE at FULL_TEXT or later phases
+    // Previously only triggered at FINAL, but researchers want AI assistance during FULL_TEXT review
+    // Ingestion triggers when:
+    // - Decision is INCLUDE
+    // - Phase is FULL_TEXT or FINAL (not TITLE_ABSTRACT since it auto-advances)
+    // - Not auto-advancing (meaning FULL_TEXT INCLUDE or FINAL INCLUDE stays in place)
+    const isFullTextOrLater = context.phase === 'FULL_TEXT' || context.phase === 'FINAL';
+    const shouldIngest = consensusDecision === 'INCLUDE' && isFullTextOrLater && !shouldAdvance;
 
     return {
       newStatus: finalStatus,
@@ -157,13 +163,19 @@ export class ScreeningStateMachine {
   /**
    * Determine if a phase should auto-advance
    * 
-   * Business Rule: INCLUDE at TITLE_ABSTRACT → auto-advance to FULL_TEXT
-   * All other phases require manual advancement
+   * ✅ S1 FIX: Only auto-advance when CONSENSUS is reached (not per-decision)
+   * Business Rule: INCLUDE consensus at TITLE_ABSTRACT → auto-advance to FULL_TEXT
+   * 
+   * This is called AFTER consensus is confirmed in calculateNextState,
+   * so we only need to check phase and decision type.
+   * The calling code ensures this is only reached when reviewersNeeded decisions exist.
    */
   private static shouldAutoAdvancePhase(
     currentPhase: ScreeningPhase,
     decision: ScreeningDecision
   ): boolean {
+    // Only auto-advance INCLUDE decisions from TITLE_ABSTRACT phase
+    // This method is only called when consensus is reached (all reviewers agree)
     return currentPhase === 'TITLE_ABSTRACT' && decision === 'INCLUDE';
   }
 
@@ -222,7 +234,7 @@ export class ScreeningStateMachine {
     blockers: string[];
   } {
     const blockers: string[] = [];
-    
+
     if (params.unresolvedConflicts > 0) {
       blockers.push(`${params.unresolvedConflicts} unresolved conflicts`);
     }

@@ -180,12 +180,17 @@ export class IngestionWorker {
         throw new Error(result.error || 'Ingestion failed');
       }
     } catch (error) {
-      // Update status to failed
+      // Check if this was the last attempt
+      const maxAttempts = job.opts.attempts || 1;
+      const attempt = job.attemptsMade + 1; // attemptsMade is 0-indexed
+      const isFinalAttempt = attempt >= maxAttempts;
+
+      // Update status
       await db.projectWork.update({
         where: { id: projectWorkId },
         data: {
-          ingestionStatus: 'FAILED',
-          ingestionError: error instanceof Error ? error.message : 'Unknown error',
+          ingestionStatus: isFinalAttempt ? 'FAILED' : 'PENDING', // Go back to PENDING if retrying
+          ingestionError: `Attempt ${attempt}/${maxAttempts} failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
         },
       });
 

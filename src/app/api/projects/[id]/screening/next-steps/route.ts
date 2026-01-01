@@ -126,24 +126,99 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         if (currentPhase === "TITLE_ABSTRACT") nextPhase = "FULL_TEXT";
         else if (currentPhase === "FULL_TEXT") nextPhase = "FINAL";
 
-        // Calculate actual phase stats from ProjectWork status
+        // Calculate phase-specific stats, accounting for advanced studies
+        const nextPhases = {
+            TITLE_ABSTRACT: ["FULL_TEXT", "FINAL"],
+            FULL_TEXT: ["FINAL"],
+            FINAL: [],
+        };
+
+        const advancedPhases = nextPhases[currentPhase] || [];
+
+        const [
+            currentPhaseStats,
+            advancedCount
+        ] = await Promise.all([
+            // Stats for items CURRENTLY in this phase
+            db.projectWork.groupBy({
+                by: ['status'],
+                where: {
+                    projectId,
+                    phase: currentPhase,
+                },
+                _count: true,
+            }),
+            // Count of items in advanced phases (implies they were INCLUDED in this phase)
+            advancedPhases.length > 0 ? db.projectWork.count({
+                where: {
+                    projectId,
+                    phase: { in: advancedPhases as ScreeningPhase[] }
+                }
+            }) : Promise.resolve(0)
+        ]);
+
         const phaseStatsMap: Record<string, number> = {};
-        for (const stat of phaseStatsRaw) {
+        for (const stat of currentPhaseStats) {
             phaseStatsMap[stat.status] = stat._count;
         }
+
+        const includedCount = (phaseStatsMap['INCLUDED'] || 0) + advancedCount;
+        const excludedCount = phaseStatsMap['EXCLUDED'] || 0;
+        const maybeCount = phaseStatsMap['MAYBE'] || 0;
+
+        // 6. User-specific stats (My Progress)
+        const [userIncluded, userExcluded, userMaybe] = await Promise.all([
+            db.screeningDecisionRecord.count({
+                where: {
+                    projectWork: { projectId },
+                    phase: currentPhase,
+                    reviewerId: session.user.id,
+                    decision: "INCLUDE"
+                }
+            }),
+            db.screeningDecisionRecord.count({
+                where: {
+                    projectWork: { projectId },
+                    phase: currentPhase,
+                    reviewerId: session.user.id,
+                    decision: "EXCLUDE"
+                }
+            }),
+            db.screeningDecisionRecord.count({
+                where: {
+                    projectWork: { projectId },
+                    phase: currentPhase,
+                    reviewerId: session.user.id,
+                    decision: "MAYBE"
+                }
+            })
+        ]);
+
+        // Total considered meant for this phase = Included + Excluded + Maybe + Pending (in this phase) + Advanced
+        // Which simplifes to: Total items currently in this phase + Advanced items
+        const totalInPhase = totalWorks + advancedCount; // totalWorks was just count({where: {phase: currentPhase}}) below
+
+        // Recalculate totalWorks based on new logic for consistency in return
+        // Note: variable 'totalWorks' defined earlier was just items *currently* in phase.
+        // We really want the "Total Pool" for this phase.
 
         return success({
             completed: userPendingCount === 0,
             totalPending: userPendingCount,
             conflicts: conflictsCount,
-            // NOTE: This field is consumed by UI; we repurpose it to the real blocker:
-            // how many studies still need more reviews for the team to finish this phase.
             remainingReviewers: studiesAwaitingMoreReviews,
             phaseStats: {
-                total: totalWorks,
-                included: phaseStatsMap['INCLUDED'] || 0,
-                excluded: phaseStatsMap['EXCLUDED'] || 0,
-                maybe: phaseStatsMap['MAYBE'] || 0
+                total: totalInPhase,
+                included: includedCount,
+                excluded: excludedCount,
+                maybe: maybeCount
+            },
+            userStats: {
+                total: userPendingCount + userIncluded + userExcluded + userMaybe,
+                included: userIncluded,
+                excluded: userExcluded,
+                pending: userPendingCount,
+                maybe: userMaybe
             },
             canMoveToNextPhase: isPhaseComplete && ["OWNER", "LEAD"].includes(membership.role),
             nextPhase
