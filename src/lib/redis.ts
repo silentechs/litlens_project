@@ -8,11 +8,15 @@ import Redis from "ioredis";
  * - Provide either `UPSTASH_REDIS_URL` (preferred) or `REDIS_URL`.
  */
 
+const DISABLE_REDIS = true;
+
 function getRedisUrl(): string | undefined {
+  if (DISABLE_REDIS) return undefined;
   return process.env.UPSTASH_REDIS_URL || process.env.REDIS_URL;
 }
 
 export function isRedisConfigured(): boolean {
+  if (DISABLE_REDIS) return false;
   return Boolean(getRedisUrl());
 }
 
